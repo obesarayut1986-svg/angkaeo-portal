@@ -4,14 +4,15 @@
  */
 
 export type UserRole = 
-  | 'super_admin'       // ผู้ดูแลระบบหลัก (มีสิทธิ์ทุกอย่าง จัดการผู้ใช้ ตั้งค่าระบบ)
-  | 'executive'         // ผู้บริหาร (นายก อบต. / ปลัด อบต.)
-  | 'division_director' // ผู้อำนวยการกอง (หัวหน้าส่วนราชการ อนุมัติขั้น 1)
-  | 'central_saraban'   // สารบรรณกลาง (สำนักปลัด - ลงรับ/ส่ง/จ่ายหนังสือ จัดเวร)
-  | 'division_admin'    // สารบรรณกอง/แอดมินกอง (กดรับหนังสือ, จัดการวัสดุกอง)
-  | 'technician'        // ช่างซ่อม (กองช่าง อัปเดตงานซ่อม)
-  | 'hr_staff'          // บุคลากร (จัดการเวรและกิจกรรม)
-  | 'staff';            // เจ้าหน้าที่ทั่วไป
+  | 'super_admin'            // ผู้ดูแลระบบหลัก (มีสิทธิ์ทุกอย่าง จัดการผู้ใช้ ตั้งค่าระบบ)
+  | 'executive'              // ผู้บริหาร (นายก อบต. / ปลัด อบต.)
+  | 'division_director'      // ผู้อำนวยการกอง (หัวหน้ากอง Approver อนุมัติคำขอเบิก)
+  | 'central_saraban'        // สารบรรณกลาง (สำนักปลัด - ลงรับ/ส่ง/จ่ายหนังสือ จัดเวร)
+  | 'division_admin'         // สารบรรณกอง/แอดมินกอง (กดรับหนังสือ)
+  | 'division_stock_officer' // เจ้าหน้าที่คลังพัสดุประจำกอง (จัดการสต็อก อนุมัติเบิกจ่าย/ตัดสต็อก)
+  | 'technician'             // ช่างซ่อม (กองช่าง อัปเดตงานซ่อม)
+  | 'hr_staff'               // บุคลากร (จัดการเวรและกิจกรรม)
+  | 'staff';                 // ผู้ใช้ทั่วไป (Requester เขียนใบเบิก ค้นหาเฉพาะกองตนเอง)
 
 export interface UserPermission {
   canUseSarabanCentral: boolean;     // สารบรรณกลาง
@@ -26,6 +27,10 @@ export interface UserPermission {
   canApproveInventory: boolean;      // ผอ.กอง อนุมัติเบิกวัสดุ
   canManageUsers: boolean;           // จัดการผู้ใช้
   canManageCms: boolean;             // ตั้งค่า CMS/หัวเว็บ
+  canRequestMaterial?: boolean;      // ผู้ใช้ทั่วไป เขียนใบเบิกวัสดุ
+  canApproveRequisition?: boolean;   // หัวหน้ากอง อนุมัติใบเบิกของกองตัวเอง
+  canDispenseMaterial?: boolean;     // จนท.คลังพัสดุกอง จ่ายพัสดุและตัดสต็อก
+  canManageDivisionStock?: boolean;  // จนท.คลังพัสดุกอง จัดการสต็อกของกองตัวเอง
 }
 
 export interface User {
@@ -48,9 +53,10 @@ export interface User {
 export interface Division {
   id: string;
   name: string;
-  code: string;
+  code: string;          // เช่น สป, กค, กช, กศ
+  shortCode: string;     // เช่น ปล, คล, ชง, ศษ สำหรับเลขที่เอกสาร
   directorName?: string;
-  isDefault?: boolean; // 4 กองหลัก
+  isDefault?: boolean;   // 4 กองหลัก
 }
 
 export interface Village {
@@ -78,7 +84,7 @@ export interface DocAttachment {
 export interface DocTrackingEvent {
   id: string;
   timestamp: string;
-  step: 'ลงทะเบียนรับ' | 'จ่ายหนังสือ' | 'กองรับเอกสาร' | 'เกษียณหนังสือ' | 'เสร็จสิ้น';
+  step: 'ลงทะเบียนรับ' | 'จ่ายหนังสือ' | 'กองรับเอกสาร' | 'เกษียณหนังสือ' | 'แนบเอกสารเพิ่มเติม' | 'เสร็จสิ้น';
   actionBy: string;
   roleName: string;
   toDivision?: string;
@@ -306,6 +312,62 @@ export interface MaterialTransaction {
   signature?: string;     // ลายมือชื่อ
   signatoryName?: string; // ชื่อผู้ลงนามรับ/จ่าย
   note?: string;          // หมายเหตุ
+}
+
+// 5.1 ระบบใบเบิกวัสดุ (Material Requisitions) แยก 4 กอง
+export type RequisitionStatus =
+  | 'pending_approver'  // รอหัวหน้ากองอนุมัติ
+  | 'pending_dispense'  // หัวหน้ากองอนุมัติแล้ว รอ จนท.พัสดุจ่ายวัสดุ/ตัดสต็อก
+  | 'completed'         // จ่ายวัสดุและตัดสต็อกเรียบร้อยแล้ว
+  | 'rejected';         // ไม่อนุมัติ
+
+export interface RequisitionItem {
+  materialId: string;
+  materialCode: string;
+  materialName: string;
+  categoryName: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;    // ราคาต่อหน่วย (บาท) ณ วันที่เบิก (ล็อกราคา)
+  totalPrice: number;   // รวมเป็นเงิน (quantity * unitPrice)
+}
+
+export interface MaterialRequisition {
+  id: string;
+  reqNo: string;              // เลขที่เอกสาร เช่น ปล-202610-001
+  divisionId: string;         // สังกัดกอง
+  divisionName: string;
+  divisionShortCode: string;  // ปล | คล | ชง | ศษ
+  requesterId: string;
+  requesterName: string;
+  requesterPosition: string;
+  requestDate: string;        // YYYY-MM-DD
+  requestDateTime: string;    // วันที่-เวลาจริง เช่น "10 ต.ค. 2569 เวลา 16:56 น."
+  purpose: string;            // วัตถุประสงค์การเบิก
+  items: RequisitionItem[];
+  totalAmount: number;        // ยอดรวมทั้งสิ้น
+  status: RequisitionStatus;
+
+  // ขั้นที่ 1: หัวหน้ากอง (Approver)
+  approverId?: string;
+  approverName?: string;
+  approvedAt?: string;
+  approverComment?: string;
+
+  // ขั้นที่ 2: เจ้าหน้าที่คลังพัสดุประจำกอง (Dispenser)
+  dispenserId?: string;
+  dispenserName?: string;
+  dispensedAt?: string;
+  dispenserComment?: string;
+
+  // กรณีไม่อนุมัติ
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectReason?: string;
+
+  fiscalYear: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // 6. CMS Settings

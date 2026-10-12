@@ -5,12 +5,15 @@ import {
   Navigation,
   ZoomIn,
   ZoomOut,
-  Layers,
   Building,
   AlertTriangle,
   Flame,
   CheckCircle2,
   Info,
+  Maximize2,
+  Minimize2,
+  Crosshair,
+  Compass,
 } from 'lucide-react';
 import { RepairItem, Village } from '../../types';
 import { getVillages } from '../../db/storage';
@@ -33,20 +36,22 @@ export const ANG_KAEO_HQ = {
   name: 'ที่ทำการองค์การบริหารส่วนตำบลอ่างแก้ว',
 };
 
-// Create custom SVG Leaflet div icons to guarantee perfect rendering in Vite without 404 image issues
-const createPinIcon = (color: string = '#2563eb', label?: string) => {
+// Create custom SVG Leaflet div icons
+const createPinIcon = (color: string = '#2563eb', label: string = 'จุดแจ้งซ่อม') => {
   return L.divIcon({
     className: 'custom-osm-pin',
     html: `
-      <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
-        <div style="background-color: ${color}; color: white; width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.35); border: 2.5px solid white;">
-          <div style="transform: rotate(45deg); font-weight: bold; font-size: 13px;">📍</div>
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); pointer-events: auto;">
+        <div style="background-color: ${color}; color: white; width: 38px; height: 38px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(37,99,235,0.6); border: 3px solid white; animation: bouncePin 1s ease-in-out;">
+          <div style="transform: rotate(45deg); font-weight: bold; font-size: 16px;">📍</div>
         </div>
-        ${label ? `<div style="background: rgba(15,23,42,0.85); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; white-space: nowrap; margin-top: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">${label}</div>` : ''}
+        <div style="background: #1e3a8a; color: white; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; white-space: nowrap; margin-top: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.4);">
+          ${label}
+        </div>
       </div>
     `,
-    iconSize: [34, 34],
-    iconAnchor: [17, 34],
+    iconSize: [38, 38],
+    iconAnchor: [19, 38],
   });
 };
 
@@ -55,16 +60,16 @@ const createHqIcon = () => {
     className: 'custom-osm-hq-pin',
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
-        <div style="background-color: #d97706; color: white; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(217,119,6,0.6); border: 3px solid white;">
-          <span style="font-size: 18px;">🏛️</span>
+        <div style="background-color: #d97706; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(217,119,6,0.6); border: 3px solid white;">
+          <span style="font-size: 17px;">🏛️</span>
         </div>
-        <div style="background: #1e3a8a; color: white; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; white-space: nowrap; margin-top: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid #60a5fa;">
-          อบต.อ่างแก้ว (HQ)
+        <div style="background: #1e3a8a; color: white; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: bold; white-space: nowrap; margin-top: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid #60a5fa;">
+          อบต.อ่างแก้ว
         </div>
       </div>
     `,
-    iconSize: [38, 38],
-    iconAnchor: [19, 38],
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
   });
 };
 
@@ -109,7 +114,7 @@ const createVillageIcon = (no: number, name: string) => {
         <div style="background-color: #0284c7; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.25); border: 1.5px solid white; font-weight: bold; font-size: 11px;">
           ${no}
         </div>
-        <div style="background: rgba(255,255,255,0.9); color: #0f172a; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700; white-space: nowrap; margin-top: 2px; border: 1px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="background: rgba(255,255,255,0.95); color: #0f172a; padding: 1px 5px; border-radius: 4px; font-size: 9px; font-weight: 700; white-space: nowrap; margin-top: 2px; border: 1px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
           ม.${no}
         </div>
       </div>
@@ -127,7 +132,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   villages: propVillages,
   selectedRepairId,
   onSelectRepair,
-  height = '380px',
+  height = '360px',
 }) => {
   const activeVillages = propVillages || getVillages();
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -138,8 +143,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number }>(
     initialCoords || { lat: ANG_KAEO_HQ.lat, lng: ANG_KAEO_HQ.lng }
   );
-  const [mapLayer, setMapLayer] = useState<'osm_standard' | 'osm_hot'>('osm_standard');
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pinSuccessNotice, setPinSuccessNotice] = useState<string | null>(null);
 
   // Find nearest village
   const getNearestVillage = (lat: number, lng: number) => {
@@ -158,7 +164,29 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     return nearest;
   };
 
-  // Initialize Leaflet Map with OpenStreetMap
+  // Helper to apply new coordinates
+  const applyCoordinates = (lat: number, lng: number, customLabel?: string) => {
+    const cleanLat = parseFloat(lat.toFixed(6));
+    const cleanLng = parseFloat(lng.toFixed(6));
+    setCurrentCoords({ lat: cleanLat, lng: cleanLng });
+
+    const nearest = getNearestVillage(cleanLat, cleanLng);
+    const text = customLabel || `พิกัด GPS (${cleanLat}, ${cleanLng}) ใกล้ ${nearest.name} ต.อ่างแก้ว`;
+
+    if (onLocationSelect) {
+      onLocationSelect({
+        lat: cleanLat,
+        lng: cleanLng,
+        villageNo: nearest.no,
+        addressText: text,
+      });
+    }
+
+    setPinSuccessNotice(`ปักหมุดแล้ว: ${nearest.name} (${cleanLat}, ${cleanLng})`);
+    setTimeout(() => setPinSuccessNotice(null), 4000);
+  };
+
+  // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -168,15 +196,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       const map = L.map(mapContainerRef.current, {
         center: [startLat, startLng],
-        zoom: 14,
-        zoomControl: false, // We'll render modern custom zoom controls
+        zoom: 15,
+        zoomControl: false,
         attributionControl: true,
       });
 
-      // OpenStreetMap standard tile layer
+      // OpenStreetMap Standard Tiles
       const osmTileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors | อบต.อ่างแก้ว',
+        attribution: '&copy; OpenStreetMap contributors | อบต.อ่างแก้ว',
       });
       osmTileLayer.addTo(map);
 
@@ -184,41 +212,73 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       markersLayerRef.current = markersGroup;
       mapInstanceRef.current = map;
 
-      // Handle map click in 'pin' mode
-      if (mode === 'pin') {
-        map.on('click', (e: L.LeafletMouseEvent) => {
-          const { lat, lng } = e.latlng;
-          const cleanLat = parseFloat(lat.toFixed(6));
-          const cleanLng = parseFloat(lng.toFixed(6));
-          setCurrentCoords({ lat: cleanLat, lng: cleanLng });
+      // Handle Map Click for Pin Mode
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        if (mode === 'pin') {
+          applyCoordinates(e.latlng.lat, e.latlng.lng);
+        }
+      });
 
-          const nearest = getNearestVillage(cleanLat, cleanLng);
-          if (onLocationSelect) {
-            onLocationSelect({
-              lat: cleanLat,
-              lng: cleanLng,
-              villageNo: nearest.no,
-              addressText: `พิกัด OpenStreetMap (${cleanLat}, ${cleanLng}) ใกล้ ${nearest.name} ต.อ่างแก้ว`,
-            });
+      // Invalidate size on load to guarantee pixel-accurate clicks
+      const initTimer = setTimeout(() => {
+        if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+          try {
+            mapInstanceRef.current.invalidateSize();
+          } catch {
+            // Container unmounted or detached
           }
-        });
-      }
+        }
+      }, 250);
+
+      return () => {
+        clearTimeout(initTimer);
+        if (mapInstanceRef.current) {
+          try {
+            mapInstanceRef.current.remove();
+          } catch {
+            // Safe teardown
+          }
+          mapInstanceRef.current = null;
+        }
+      };
     }
 
     return () => {
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        try {
+          mapInstanceRef.current.remove();
+        } catch {
+          // Safe teardown
+        }
         mapInstanceRef.current = null;
       }
     };
   }, []);
 
+  // Invalidate size on fullscreen toggle or window resize
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+        try {
+          mapInstanceRef.current.invalidateSize();
+        } catch {
+          // Safe handling
+        }
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [isFullscreen]);
+
   // Sync coords changes with initialCoords
   useEffect(() => {
     if (initialCoords && (initialCoords.lat !== currentCoords.lat || initialCoords.lng !== currentCoords.lng)) {
       setCurrentCoords(initialCoords);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.setView([initialCoords.lat, initialCoords.lng], mapInstanceRef.current.getZoom());
+      if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+        try {
+          mapInstanceRef.current.setView([initialCoords.lat, initialCoords.lng], mapInstanceRef.current.getZoom());
+        } catch {
+          // Safe handling
+        }
       }
     }
   }, [initialCoords]);
@@ -239,7 +299,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       <div style="font-family: sans-serif; font-size: 12px; line-height: 1.4; padding: 2px;">
         <strong style="color: #1e3a8a; font-size: 13px;">🏛️ ที่ทำการ อบต.อ่างแก้ว</strong><br/>
         ตำบลอ่างแก้ว อำเภอโพธิ์ทอง จังหวัดอ่างทอง<br/>
-        <span style="font-size: 11px; color: #64748b; font-family: monospace;">พิกัด GPS: ${ANG_KAEO_HQ.lat.toFixed(6)}, ${ANG_KAEO_HQ.lng.toFixed(6)}</span>
+        <span style="font-size: 11px; color: #64748b; font-family: monospace;">GPS: ${ANG_KAEO_HQ.lat.toFixed(6)}, ${ANG_KAEO_HQ.lng.toFixed(6)}</span>
       </div>
     `);
     layer.addLayer(hqMarker);
@@ -249,40 +309,31 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       if (v.lat && v.lng) {
         const vilMarker = L.marker([v.lat, v.lng], {
           icon: createVillageIcon(v.no, v.name),
-        }).bindPopup(`
-          <div style="font-family: sans-serif; font-size: 12px; line-height: 1.4;">
-            <strong style="color: #0369a1;">${v.name}</strong><br/>
-            ${v.description || 'เขตรับผิดชอบ อบต.อ่างแก้ว'}<br/>
-            <span style="font-size: 10px; color: #64748b;">(ม.${v.no} ต.อ่างแก้ว อ.โพธิ์ทอง)</span>
-          </div>
-        `);
+        });
+
+        vilMarker.on('click', () => {
+          if (mode === 'pin') {
+            applyCoordinates(v.lat!, v.lng!, `ม.${v.no} ${v.name} ตำบลอ่างแก้ว`);
+            map.flyTo([v.lat!, v.lng!], 16);
+          }
+        });
+
         layer.addLayer(vilMarker);
       }
     });
 
     // 3. Render according to Mode
     if (mode === 'pin') {
+      const nearest = getNearestVillage(currentCoords.lat, currentCoords.lng);
       const pin = L.marker([currentCoords.lat, currentCoords.lng], {
-        icon: createPinIcon('#2563eb', 'จุดแจ้งเหตุ'),
+        icon: createPinIcon('#2563eb', `จุดซ่อม: ${nearest.name}`),
         draggable: true,
-        zIndexOffset: 2000,
+        zIndexOffset: 3000,
       });
 
       pin.on('dragend', () => {
         const pos = pin.getLatLng();
-        const cleanLat = parseFloat(pos.lat.toFixed(6));
-        const cleanLng = parseFloat(pos.lng.toFixed(6));
-        setCurrentCoords({ lat: cleanLat, lng: cleanLng });
-
-        const nearest = getNearestVillage(cleanLat, cleanLng);
-        if (onLocationSelect) {
-          onLocationSelect({
-            lat: cleanLat,
-            lng: cleanLng,
-            villageNo: nearest.no,
-            addressText: `พิกัด GPS (${cleanLat}, ${cleanLng}) ใกล้ ${nearest.name} ต.อ่างแก้ว`,
-          });
-        }
+        applyCoordinates(pos.lat, pos.lng);
       });
 
       layer.addLayer(pin);
@@ -331,18 +382,37 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   // Jump to องค์การบริหารส่วนตำบลอ่างแก้ว HQ
   const handleResetToHq = () => {
-    setCurrentCoords({ lat: ANG_KAEO_HQ.lat, lng: ANG_KAEO_HQ.lng });
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([ANG_KAEO_HQ.lat, ANG_KAEO_HQ.lng], 16);
+    applyCoordinates(ANG_KAEO_HQ.lat, ANG_KAEO_HQ.lng, 'ที่ทำการ อบต.อ่างแก้ว (GPS: 14.654922, 100.393166)');
+    if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+      try {
+        mapInstanceRef.current.flyTo([ANG_KAEO_HQ.lat, ANG_KAEO_HQ.lng], 16);
+      } catch {
+        // Safe handling
+      }
     }
-    const nearest = getNearestVillage(ANG_KAEO_HQ.lat, ANG_KAEO_HQ.lng);
-    if (onLocationSelect) {
-      onLocationSelect({
-        lat: ANG_KAEO_HQ.lat,
-        lng: ANG_KAEO_HQ.lng,
-        villageNo: 1,
-        addressText: 'ที่ทำการองค์การบริหารส่วนตำบลอ่างแก้ว หมู่ที่ 1 ตำบลอ่างแก้ว อำเภอโพธิ์ทอง',
-      });
+  };
+
+  // Pin at Current Map Center
+  const handlePinAtCenter = () => {
+    if (!mapInstanceRef.current || !(mapInstanceRef.current as any)._mapPane) return;
+    try {
+      const center = mapInstanceRef.current.getCenter();
+      applyCoordinates(center.lat, center.lng);
+    } catch {
+      // Safe handling
+    }
+  };
+
+  // Jump to specific village
+  const handleSelectVillage = (v: Village) => {
+    if (!v.lat || !v.lng) return;
+    applyCoordinates(v.lat, v.lng, `ม.${v.no} ${v.name} ต.อ่างแก้ว`);
+    if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+      try {
+        mapInstanceRef.current.flyTo([v.lat, v.lng], 16);
+      } catch {
+        // Safe handling
+      }
     }
   };
 
@@ -358,78 +428,119 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         setGpsLoading(false);
         const lat = parseFloat(pos.coords.latitude.toFixed(6));
         const lng = parseFloat(pos.coords.longitude.toFixed(6));
-        setCurrentCoords({ lat, lng });
+        applyCoordinates(lat, lng, `พิกัด GPS จริง (${lat}, ${lng}) ต.อ่างแก้ว`);
 
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.setView([lat, lng], 16);
-        }
-
-        const nearest = getNearestVillage(lat, lng);
-        if (onLocationSelect) {
-          onLocationSelect({
-            lat,
-            lng,
-            villageNo: nearest.no,
-            addressText: `พิกัด GPS จริง (${lat}, ${lng}) ใกล้ ${nearest.name} ตำบลอ่างแก้ว`,
-          });
+        if (mapInstanceRef.current && (mapInstanceRef.current as any)._mapPane) {
+          try {
+            mapInstanceRef.current.flyTo([lat, lng], 17);
+          } catch {
+            // Safe handling
+          }
         }
       },
-      () => {
+      (err) => {
         setGpsLoading(false);
-        handleResetToHq();
+        console.warn('Geolocation error:', err);
+        alert('ไม่สามารถดึงพิกัดจาก GPS ได้ กรุณาแตะบนแผนที่เพื่อปักหมุดด้วยตนเอง');
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
+  const nearestVillage = getNearestVillage(currentCoords.lat, currentCoords.lng);
+
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-slate-300 shadow-xs bg-slate-100 flex flex-col">
+    <div
+      className={`relative rounded-2xl overflow-hidden border border-slate-300 shadow-sm bg-slate-100 flex flex-col transition-all ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 rounded-none border-none h-screen w-screen'
+          : ''
+      }`}
+    >
       {/* Top Map Info Header */}
-      <div className="bg-slate-900 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs z-10 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="p-1 bg-blue-600 rounded-md">
+      <div className="bg-slate-900 text-white px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs z-10 border-b border-slate-800">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1 bg-blue-600 rounded-md shrink-0">
             <MapPin className="w-3.5 h-3.5 text-white" />
           </div>
-          <span className="font-bold text-slate-100">
-            แผนที่แจ้งซ่อม OpenStreetMap • อบต.อ่างแก้ว
+          <span className="font-bold text-slate-100 truncate">
+            {mode === 'pin' ? 'แตะบนแผนที่เพื่อปักหมุดจุดชำรุด' : 'แผนที่จุดแจ้งซ่อม อบต.อ่างแก้ว'}
           </span>
-          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-blue-300 border border-slate-700 font-mono">
-            GPS: {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
+          <span className="hidden md:inline-block px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-blue-300 border border-slate-700 font-mono shrink-0">
+            {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {mode === 'pin' && (
+            <>
+              <button
+                type="button"
+                disabled={gpsLoading}
+                onClick={handleUseCurrentLocation}
+                className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
+                title="ดึงพิกัด GPS อัตโนมัติจากอุปกรณ์ของคุณ"
+              >
+                <Navigation className={`w-3 h-3 ${gpsLoading ? 'animate-spin' : ''}`} />
+                <span className="hidden xs:inline">{gpsLoading ? 'ค้นหา...' : 'GPS ของฉัน'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePinAtCenter}
+                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
+                title="ปักหมุดตรงจุดกึ่งกลางของแผนที่ที่กำลังมองอยู่"
+              >
+                <Crosshair className="w-3 h-3" />
+                <span>ปักหมุดตรงนี้</span>
+              </button>
+            </>
+          )}
+
           <button
             type="button"
             onClick={handleResetToHq}
-            className="flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
-            title="ขยับกลับไปยังที่ทำการ อบต.อ่างแก้ว (GPS: 14.654922, 100.393166)"
+            className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg transition border border-slate-700 cursor-pointer text-[11px]"
+            title="ขยับกลับไปยังที่ทำการ อบต.อ่างแก้ว"
           >
-            <Building className="w-3 h-3" />
-            <span>ไปที่ทำการ อบต.</span>
+            <Building className="w-3 h-3 text-amber-400" />
+            <span className="hidden sm:inline">อบต.</span>
           </button>
 
-          {mode === 'pin' && (
-            <button
-              type="button"
-              disabled={gpsLoading}
-              onClick={handleUseCurrentLocation}
-              className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
-              title="ดึงพิกัด GPS อัตโนมัติจากอุปกรณ์ของคุณ"
-            >
-              <Navigation className={`w-3 h-3 ${gpsLoading ? 'animate-spin' : ''}`} />
-              <span>{gpsLoading ? 'กำลังค้นหา...' : 'GPS ปัจจุบัน'}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition border border-slate-700 cursor-pointer"
+            title={isFullscreen ? 'ย่อหน้าต่างกลับ' : 'ขยายแผนที่เต็มจอ (สะดวกบนมือถือ)'}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-amber-400" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
         </div>
       </div>
+
+      {/* Floating Success Notification Toast */}
+      {pinSuccessNotice && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{pinSuccessNotice}</span>
+        </div>
+      )}
 
       {/* Real Leaflet OpenStreetMap Container */}
       <div
         ref={mapContainerRef}
-        style={{ height }}
-        className="w-full z-0 relative focus:outline-none"
+        style={{ height: isFullscreen ? 'calc(100vh - 120px)' : height }}
+        className="w-full z-0 relative focus:outline-none cursor-crosshair"
       />
+
+      {/* Floating Center Reticle Crosshair (Helper for Pinning on Mobile) */}
+      {mode === 'pin' && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
+          <div className="w-8 h-8 rounded-full border-2 border-dashed border-blue-600/60 flex items-center justify-center opacity-70">
+            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+          </div>
+        </div>
+      )}
 
       {/* Floating Map Controls (Zoom In/Out) */}
       <div className="absolute right-3 top-14 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200">
@@ -451,38 +562,59 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         </button>
       </div>
 
-      {/* Bottom helper text for Mode */}
-      <div className="bg-white/95 px-3.5 py-2 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2">
+      {/* Quick Village Selector Bar (Especially helpful on Mobile phones) */}
+      {mode === 'pin' && (
+        <div className="bg-slate-50 px-3 py-1.5 border-t border-slate-200 flex items-center gap-1.5 overflow-x-auto text-[11px] z-10">
+          <span className="text-slate-500 font-semibold shrink-0 flex items-center gap-1">
+            <Compass className="w-3 h-3 text-blue-600" />
+            <span>ไปที่หมู่:</span>
+          </span>
+          {activeVillages.map((v) => (
+            <button
+              key={v.id || v.no}
+              type="button"
+              onClick={() => handleSelectVillage(v)}
+              className={`px-2 py-0.5 rounded-md font-medium shrink-0 transition cursor-pointer border ${
+                nearestVillage.no === v.no
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-bold'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+              }`}
+            >
+              ม.{v.no} {v.name.replace(/หมู่ที่\s*\d+\s*/, '')}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom status bar */}
+      <div className="bg-white px-3.5 py-2 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-slate-600 gap-2 z-10">
         <div className="flex items-center gap-2">
           {mode === 'pin' ? (
-            <>
-              <span className="text-blue-700 font-semibold flex items-center gap-1">
-                <Info className="w-3.5 h-3.5" />
-                คลิกบนแผนที่ OpenStreetMap หรือลากหมุดเพื่อระบุตำแหน่งชำรุด
+            <div className="text-blue-900 font-semibold flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse inline-block" />
+              <span>
+                ปักหมุดแล้วที่: <strong className="text-blue-700">{nearestVillage.name}</strong> ({currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)})
               </span>
-            </>
+            </div>
           ) : (
-            <>
-              <span className="text-slate-700 font-semibold">
-                แสดงจุดเกิดเหตุทั้งหมด {repairs.length} งาน ในเขตตำบลอ่างแก้ว
-              </span>
-            </>
+            <span className="text-slate-700 font-semibold">
+              แสดงจุดเกิดเหตุทั้งหมด {repairs.length} งาน ในเขตตำบลอ่างแก้ว
+            </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-[10px] text-slate-500 font-medium">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> ด่วนที่สุด
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> ด่วน
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> ซ่อมแล้ว
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-600 inline-block"></span> อบต.อ่างแก้ว
-          </span>
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(false)}
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition text-xs shadow-xs cursor-pointer"
+          >
+            ✓ เสร็จสิ้น บันทึกจุดนี้
+          </button>
+        )}
+
+        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+          <span className="hidden sm:inline text-slate-400">💡 แตะที่จุดใดก็ได้บนแผนที่เพื่อเปลี่ยนตำแหน่งทันที</span>
         </div>
       </div>
     </div>

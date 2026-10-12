@@ -17,10 +17,12 @@ import {
   FolderPlus,
   Download,
   Share2,
+  FileText,
 } from 'lucide-react';
 import {
   MaterialItem,
   MaterialTransaction,
+  MaterialRequisition,
   MaterialCategory,
   Division,
   StockTransactionType,
@@ -33,11 +35,14 @@ import {
   addMaterialCategory,
   addDivision,
   logPdpaAction,
+  getMaterialRequisitions,
 } from '../../../db/storage';
+import { RequisitionSection } from './RequisitionSection';
 
 interface InventoryModuleProps {
   materials: MaterialItem[];
   transactions: MaterialTransaction[];
+  requisitions?: MaterialRequisition[];
   categories: MaterialCategory[];
   divisions: Division[];
 }
@@ -45,15 +50,28 @@ interface InventoryModuleProps {
 export const InventoryModule: React.FC<InventoryModuleProps> = ({
   materials,
   transactions,
+  requisitions,
   categories,
   divisions,
 }) => {
   const { currentUser, canAccess } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'items' | 'transactions' | 'pd4_report'>('items');
+  const [activeTab, setActiveTab] = useState<'requisitions' | 'items' | 'transactions' | 'pd4_report'>('requisitions');
+  const allRequisitions = requisitions || getMaterialRequisitions();
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+
+  // Strict division locking for non-super_admins
+  const userDivId = currentUser?.divisionId || divisions[0]?.id || 'div-palad';
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>(
-    currentUser?.divisionId || divisions[0]?.id || ''
+    isSuperAdmin ? (divisions[0]?.id || 'div-palad') : userDivId
   );
+
+  React.useEffect(() => {
+    if (!isSuperAdmin && currentUser?.divisionId) {
+      setSelectedDivisionId(currentUser.divisionId);
+    }
+  }, [currentUser, isSuperAdmin]);
+
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterPeriod, setFilterPeriod] = useState<'day' | 'month' | 'fiscal_year'>('fiscal_year');
@@ -97,17 +115,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [txBorrowingDivId, setTxBorrowingDivId] = useState<string>('');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Permissions check
-  const isSuperAdmin = currentUser?.role === 'super_admin';
+  // Permissions check based on roles and access rights
+  const isDivisionStockOfficer =
+    currentUser?.role === 'division_stock_officer' ||
+    currentUser?.role === 'division_admin' ||
+    canAccess('canManageInventory') ||
+    canAccess('canManageDivisionStock') ||
+    canAccess('canDispenseMaterial') ||
+    isSuperAdmin;
+
   const isDivisionDirector =
     currentUser?.role === 'division_director' ||
     currentUser?.role === 'executive' ||
     canAccess('canApproveInventory') ||
+    canAccess('canApproveRequisition') ||
     isSuperAdmin;
-  const isDivisionAdmin =
-    currentUser?.role === 'division_admin' ||
-    canAccess('canManageInventory') ||
-    isSuperAdmin;
+
+  const isDivisionAdmin = isDivisionStockOfficer;
+  const isStaff = currentUser?.role === 'staff' || canAccess('canRequestMaterial');
 
   // Filtered materials by current active division
   const currentDivMaterials = materials.filter((m) => {
@@ -331,21 +356,31 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-bold text-slate-700 mr-2 flex items-center gap-1">
               <Building2 className="w-4 h-4 text-blue-600" />
-              <span>เลือกกอง:</span>
+              <span>{isSuperAdmin ? 'สลับคลัง 4 กอง:' : 'คลังพัสดุประจำกอง:'}</span>
             </span>
-            {divisions.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setSelectedDivisionId(d.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                  selectedDivisionId === d.id
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {d.name}
-              </button>
-            ))}
+            {isSuperAdmin ? (
+              divisions.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => setSelectedDivisionId(d.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                    selectedDivisionId === d.id
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span className="font-bold opacity-80">{d.shortCode || d.code}:</span>
+                  <span>{d.name}</span>
+                </button>
+              ))
+            ) : (
+              <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1.5">
+                <span>{divisions.find(d => d.id === selectedDivisionId)?.name || currentUser?.divisionName}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-200/60 text-blue-900 font-mono">
+                  {divisions.find(d => d.id === selectedDivisionId)?.shortCode || 'ปล'}
+                </span>
+              </span>
+            )}
             {isSuperAdmin && (
               <button
                 onClick={() => setIsAddDivModalOpen(true)}
@@ -357,41 +392,66 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           </div>
 
           {/* Tab Navigation */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold">
+          <div className="bg-slate-100 p-1 rounded-xl flex flex-wrap items-center text-xs font-semibold gap-1">
+            <button
+              onClick={() => setActiveTab('requisitions')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'requisitions'
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>1. ขอเบิก & อนุมัติพัสดุ</span>
+              {allRequisitions.filter(r => r.status === 'pending_approver' || r.status === 'pending_dispense').length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              )}
+            </button>
             <button
               onClick={() => setActiveTab('items')}
-              className={`px-3 py-1.5 rounded-lg transition ${
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'items'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              ทะเบียนคุมวัสดุคงเหลือ
+              2. ทะเบียนคลังพัสดุประจำกอง
             </button>
             <button
               onClick={() => setActiveTab('transactions')}
-              className={`px-3 py-1.5 rounded-lg transition ${
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'transactions'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              รายการรับ-เบิกจ่าย (รออนุมัติ)
+              3. ประวัติรับ-จ่าย (รออนุมัติ)
             </button>
             <button
               onClick={() => setActiveTab('pd4_report')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 ${
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                 activeTab === 'pd4_report'
-                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  ? 'bg-slate-900 text-white shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>แบบ พ.ด.4 บัญชีวัสดุ (พิมพ์)</span>
+              <span>4. แบบ พ.ด.4 บัญชีวัสดุ</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* ================= TAB 0: REQUISITIONS (NEW WORKFLOW) ================= */}
+      {activeTab === 'requisitions' && (
+        <RequisitionSection
+          materials={materials}
+          requisitions={allRequisitions}
+          divisions={divisions}
+          selectedDivisionId={selectedDivisionId}
+          onSelectDivision={(id) => setSelectedDivisionId(id)}
+        />
+      )}
 
       {/* ================= TAB 1: MATERIAL ITEMS LIST ================= */}
       {activeTab === 'items' && (

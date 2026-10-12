@@ -14,6 +14,7 @@ import {
   getEvents,
   getMaterials,
   getMaterialTransactions,
+  getMaterialRequisitions,
   getMaterialCategories,
   getDivisions,
   getCmsSettings,
@@ -30,6 +31,7 @@ import {
   OrganizationEvent,
   MaterialItem,
   MaterialTransaction,
+  MaterialRequisition,
   MaterialCategory,
   Division,
   CmsSettings,
@@ -67,6 +69,7 @@ function MainApp() {
   // Modals
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Reactive DB States
   const [documents, setDocuments] = useState<EDocument[]>(getDocuments());
@@ -77,6 +80,7 @@ function MainApp() {
   const [events, setEvents] = useState<OrganizationEvent[]>(getEvents());
   const [materials, setMaterials] = useState<MaterialItem[]>(getMaterials());
   const [materialTxs, setMaterialTxs] = useState<MaterialTransaction[]>(getMaterialTransactions());
+  const [requisitions, setRequisitions] = useState<MaterialRequisition[]>(getMaterialRequisitions());
   const [materialCats, setMaterialCats] = useState<MaterialCategory[]>(getMaterialCategories());
   const [divisions, setDivisions] = useState<Division[]>(getDivisions());
   const [cms, setCms] = useState<CmsSettings>(getCmsSettings());
@@ -92,6 +96,7 @@ function MainApp() {
     setEvents(getEvents());
     setMaterials(getMaterials());
     setMaterialTxs(getMaterialTransactions());
+    setRequisitions(getMaterialRequisitions());
     setMaterialCats(getMaterialCategories());
     setDivisions(getDivisions());
     setCms(getCmsSettings());
@@ -120,7 +125,23 @@ function MainApp() {
   const pendingRepairsCount = repairs.filter((r) => r.status === 'pending' || r.status === 'in_progress').length;
   const pendingDocsCount = documents.filter((d) => d.status === 'dispatched' || d.status === 'registered').length;
   const pendingLicensesCount = licenseApps.filter((a) => a.status === 'submitted' || a.status === 'step1_approved').length;
-  const pendingMaterialsCount = materialTxs.filter((t) => t.status === 'pending_approval').length;
+  
+  // Pending requisitions count for current user's role and division
+  const pendingMaterialsCount = requisitions.filter((r) => {
+    if (currentUser?.role === 'super_admin') {
+      return r.status === 'pending_approver' || r.status === 'pending_dispense';
+    }
+    if (currentUser?.role === 'division_director') {
+      return r.status === 'pending_approver' && r.divisionId === currentUser.divisionId;
+    }
+    if (currentUser?.role === 'division_stock_officer') {
+      return r.status === 'pending_dispense' && r.divisionId === currentUser.divisionId;
+    }
+    if (currentUser?.role === 'staff') {
+      return r.requesterId === currentUser.id && (r.status === 'pending_approver' || r.status === 'pending_dispense');
+    }
+    return false;
+  }).length;
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
@@ -131,9 +152,12 @@ function MainApp() {
         isPublicMode={isPublicMode}
         onTogglePublicMode={(pub) => {
           setIsPublicMode(pub);
+          setIsMobileMenuOpen(false);
         }}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onOpenLogin={() => setIsLoginModalOpen(true)}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
       {/* Main View Area */}
@@ -146,21 +170,26 @@ function MainApp() {
         />
       ) : (
         /* Internal Staff Intranet */
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {/* Royal Blue Left Sidebar (Styled after reference image) */}
           <Sidebar
             currentTab={currentTab}
-            onSelectTab={(tab) => setCurrentTab(tab)}
+            onSelectTab={(tab) => {
+              setCurrentTab(tab);
+              setIsMobileMenuOpen(false);
+            }}
             onOpenProfile={() => setIsProfileModalOpen(true)}
             pendingRepairsCount={pendingRepairsCount}
             pendingDocsCount={pendingDocsCount}
             pendingLicensesCount={pendingLicensesCount}
             pendingMaterialsCount={pendingMaterialsCount}
+            isOpen={isMobileMenuOpen}
+            onClose={() => setIsMobileMenuOpen(false)}
           />
 
           {/* Intranet Main Content Screen */}
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <div className="max-w-7xl mx-auto space-y-6">
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-6">
+            <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
               {currentTab === 'dashboard' && (
                 <DashboardOverview
                   cms={cms}
@@ -205,6 +234,7 @@ function MainApp() {
                 <InventoryModule
                   materials={materials}
                   transactions={materialTxs}
+                  requisitions={requisitions}
                   categories={materialCats}
                   divisions={divisions}
                 />
@@ -221,6 +251,68 @@ function MainApp() {
               )}
             </div>
           </main>
+
+          {/* Mobile Bottom Navigation Bar for Intranet */}
+          <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30 px-2 py-1.5 flex items-center justify-around shadow-lg">
+            <button
+              onClick={() => setCurrentTab('dashboard')}
+              className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition cursor-pointer ${
+                currentTab === 'dashboard' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <span className="text-base">🏠</span>
+              <span>หน้าหลัก</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('edocument')}
+              className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition cursor-pointer relative ${
+                currentTab === 'edocument' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <span className="text-base">📄</span>
+              <span>สารบรรณ</span>
+              {pendingDocsCount > 0 && (
+                <span className="absolute top-0 right-1 w-3.5 h-3.5 bg-amber-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+                  {pendingDocsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setCurrentTab('repairs')}
+              className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition cursor-pointer relative ${
+                currentTab === 'repairs' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <span className="text-base">🔧</span>
+              <span>แจ้งซ่อม</span>
+              {pendingRepairsCount > 0 && (
+                <span className="absolute top-0 right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+                  {pendingRepairsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setCurrentTab('inventory')}
+              className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition cursor-pointer relative ${
+                currentTab === 'inventory' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <span className="text-base">📦</span>
+              <span>เบิกพัสดุ</span>
+              {pendingMaterialsCount > 0 && (
+                <span className="absolute top-0 right-1 w-3.5 h-3.5 bg-indigo-600 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+                  {pendingMaterialsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium text-slate-500 hover:text-blue-600 transition cursor-pointer"
+            >
+              <span className="text-base">☰</span>
+              <span>เมนูทั้งหมด</span>
+            </button>
+          </nav>
         </div>
       )}
 

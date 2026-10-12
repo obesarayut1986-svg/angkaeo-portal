@@ -19,6 +19,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [password, setPassword] = useState('password123');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
 
   if (!isOpen) return null;
 
@@ -119,86 +120,227 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </button>
           </form>
 
-          {/* Quick Evaluator Role Selector (Convenient testing of all roles) */}
+          {/* Quick Evaluator Role Selector (Collapsible for privacy & testing) */}
           <div className="pt-3 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                บัญชีทดสอบบทบาทต่างๆ (คลิกเพื่อเลือกทันที):
+            <button
+              type="button"
+              onClick={() => setShowDemoAccounts(!showDemoAccounts)}
+              className="w-full flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold transition cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>บัญชีทดสอบระบบ 4 กอง (คลิกเพื่อ{showDemoAccounts ? 'ซ่อน' : 'แสดง'})</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {showDemoAccounts ? '▲ ซ่อน' : '▼ คลิกเลือก'}
               </span>
-            </div>
+            </button>
 
-            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('admin')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'admin' ? 'bg-amber-50 border-amber-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">1. ผู้ดูแลระบบหลัก (Super Admin)</div>
-                <div className="text-[10px] text-slate-400 font-mono">admin</div>
-              </button>
+            {showDemoAccounts && (
+              <div className="mt-2.5 space-y-2.5 max-h-60 overflow-y-auto p-1 bg-slate-50/70 rounded-xl border border-slate-200">
+                {/* 1. สำนักปลัด */}
+                <div>
+                  <div className="text-[10px] font-bold text-blue-900 uppercase tracking-wider px-1 mb-1 flex items-center justify-between">
+                    <span>1. สำนักปลัด (รหัส ปล)</span>
+                    <span className="text-[9px] text-slate-400 font-normal">เบิก / อนุมัติ / จ่ายตัดสต็อก</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('staff_palad')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'staff_palad' ? 'bg-blue-100 border-blue-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                      title="ผู้เบิก (Requester): เขียนใบเบิก เช่น เบิกกระดาษ 2 รีม"
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.วิเคราะห์</div>
+                      <div className="text-[9px] text-slate-400">ผู้เบิก</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('palad')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'palad' ? 'bg-indigo-100 border-indigo-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                      title="Approver: หัวหน้าสำนักปลัด อนุมัติคำขอเบิก"
+                    >
+                      <div className="font-semibold text-slate-800 truncate">ปลัด อบต.</div>
+                      <div className="text-[9px] text-slate-400">ผู้อนุมัติ (หน.กอง)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('stock_palad')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'stock_palad' ? 'bg-emerald-100 border-emerald-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                      title="Dispenser: จนท.พัสดุสำนักปลัด จ่ายของและตัดสต็อก"
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.พัสดุ สป.</div>
+                      <div className="text-[9px] text-slate-400">จ่าย/ตัดสต็อก</div>
+                    </button>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('saraban')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'saraban' ? 'bg-blue-50 border-blue-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">2. สารบรรณกลาง สำนักปลัด</div>
-                <div className="text-[10px] text-slate-400 font-mono">saraban</div>
-              </button>
+                {/* 2. กองคลัง */}
+                <div>
+                  <div className="text-[10px] font-bold text-emerald-900 uppercase tracking-wider px-1 mb-1 flex items-center justify-between">
+                    <span>2. กองคลัง (รหัส คล)</span>
+                    <span className="text-[9px] text-slate-400 font-normal">แยกคลังของตนเอง</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('staff_klang')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'staff_klang' ? 'bg-emerald-100 border-emerald-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.จัดเก็บ</div>
+                      <div className="text-[9px] text-slate-400">ผู้เบิก</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('dir_klang')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'dir_klang' ? 'bg-emerald-100 border-emerald-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">ผอ.กองคลัง</div>
+                      <div className="text-[9px] text-slate-400">ผู้อนุมัติ (หน.กอง)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('stock_klang')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'stock_klang' ? 'bg-emerald-100 border-emerald-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.พัสดุคลัง</div>
+                      <div className="text-[9px] text-slate-400">จ่าย/ตัดสต็อก</div>
+                    </button>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('mayor')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'mayor' ? 'bg-purple-50 border-purple-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">3. นายก อบต. (อนุมัติขั้น 2)</div>
-                <div className="text-[10px] text-slate-400 font-mono">mayor</div>
-              </button>
+                {/* 3. กองช่าง */}
+                <div>
+                  <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider px-1 mb-1 flex items-center justify-between">
+                    <span>3. กองช่าง (รหัส ชง)</span>
+                    <span className="text-[9px] text-slate-400 font-normal">แยกคลังของตนเอง</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('technician')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'technician' ? 'bg-amber-100 border-amber-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">นายช่างโยธา</div>
+                      <div className="text-[9px] text-slate-400">ผู้เบิก</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('dir_chang')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'dir_chang' ? 'bg-amber-100 border-amber-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">ผอ.กองช่าง</div>
+                      <div className="text-[9px] text-slate-400">ผู้อนุมัติ (หน.กอง)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('stock_chang')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'stock_chang' ? 'bg-amber-100 border-amber-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.พัสดุช่าง</div>
+                      <div className="text-[9px] text-slate-400">จ่าย/ตัดสต็อก</div>
+                    </button>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('dir_chang')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'dir_chang' ? 'bg-emerald-50 border-emerald-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">4. ผอ.กองช่าง (อนุมัติขั้น 1)</div>
-                <div className="text-[10px] text-slate-400 font-mono">dir_chang</div>
-              </button>
+                {/* 4. กองการศึกษา */}
+                <div>
+                  <div className="text-[10px] font-bold text-purple-900 uppercase tracking-wider px-1 mb-1 flex items-center justify-between">
+                    <span>4. กองการศึกษาฯ (รหัส ศษ)</span>
+                    <span className="text-[9px] text-slate-400 font-normal">แยกคลังของตนเอง</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('staff_edu')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'staff_edu' ? 'bg-purple-100 border-purple-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">นักวิชาการศึกษา</div>
+                      <div className="text-[9px] text-slate-400">ผู้เบิก</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('dir_edu')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'dir_edu' ? 'bg-purple-100 border-purple-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">ผอ.กองการศึกษา</div>
+                      <div className="text-[9px] text-slate-400">ผู้อนุมัติ (หน.กอง)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('stock_edu')}
+                      className={`p-1.5 rounded-lg border text-left transition ${
+                        username === 'stock_edu' ? 'bg-purple-100 border-purple-400 font-bold' : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-slate-800 truncate">จนท.พัสดุศึกษา</div>
+                      <div className="text-[9px] text-slate-400">จ่าย/ตัดสต็อก</div>
+                    </button>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('admin_chang')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'admin_chang' ? 'bg-blue-50 border-blue-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">5. สารบรรณกองช่าง (กดรับหนังสือ)</div>
-                <div className="text-[10px] text-slate-400 font-mono">admin_chang</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('technician')}
-                className={`p-2 rounded-lg border text-left transition ${
-                  username === 'technician' ? 'bg-amber-50 border-amber-300 font-bold' : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="text-slate-900 font-semibold">6. นายช่างโยธา (อัปเดตงานซ่อม)</div>
-                <div className="text-[10px] text-slate-400 font-mono">technician</div>
-              </button>
-            </div>
+                {/* ผู้ดูแลระบบหลัก & ผู้บริหาร */}
+                <div className="pt-1 border-t border-slate-200 grid grid-cols-3 gap-1 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSelect('admin')}
+                    className={`p-1.5 rounded-lg border text-left transition ${
+                      username === 'admin' ? 'bg-slate-800 text-white font-bold' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className="font-semibold truncate">Super Admin</div>
+                    <div className="text-[9px] opacity-70">ผู้ดูแลระบบ</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSelect('mayor')}
+                    className={`p-1.5 rounded-lg border text-left transition ${
+                      username === 'mayor' ? 'bg-slate-800 text-white font-bold' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className="font-semibold truncate">นายก อบต.</div>
+                    <div className="text-[9px] opacity-70">ผู้บริหาร</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSelect('saraban')}
+                    className={`p-1.5 rounded-lg border text-left transition ${
+                      username === 'saraban' ? 'bg-slate-800 text-white font-bold' : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className="font-semibold truncate">สารบรรณกลาง</div>
+                    <div className="text-[9px] opacity-70">ลงรับ/ส่งต่อ</div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Security policy footnote: strictly no public registration */}
           <div className="p-2.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] text-center">
-            *ข้อกำหนดความปลอดภัย: ระบบไม่อนุญาตให้บุคคลภายนอกสมัครสมาชิกเอง บัญชีทั้งหมดต้องได้รับการแต่งตั้งและสร้างโดย Super Admin เท่านั้น
+            *ข้อกำหนดความปลอดภัย: ระบบไม่อนุญาตให้บุคคลภายนอกสมัครสมาชิกเอง บัญชีทั้งหมดได้รับการแต่งตั้งและควบคุมสิทธิ์ตามสายงาน
           </div>
         </div>
       </div>

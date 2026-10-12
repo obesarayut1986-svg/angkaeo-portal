@@ -686,7 +686,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     </label>
                     <select
                       value={selectedVillageNo}
-                      onChange={(e) => setSelectedVillageNo(Number(e.target.value))}
+                      onChange={(e) => {
+                        const no = Number(e.target.value);
+                        setSelectedVillageNo(no);
+                        const vil = getVillages().find((v) => v.no === no);
+                        if (vil && vil.lat && vil.lng) {
+                          setRepairCoords({ lat: vil.lat, lng: vil.lng });
+                        }
+                      }}
                       className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
                     >
                       {getVillages().map((v) => (
@@ -710,6 +717,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </div>
                 </div>
 
+                {/* Location coordinates notice pill */}
+                <div className="mb-2.5 p-2 rounded-xl bg-blue-50 border border-blue-200 flex flex-wrap items-center justify-between text-xs text-blue-900 gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="font-medium">
+                      พิกัดที่ปักหมุด: <strong className="font-mono text-blue-700">{repairCoords.lat.toFixed(5)}, {repairCoords.lng.toFixed(5)}</strong>
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200">
+                    แตะที่แผนที่ด้านล่าง เพื่อปักหมุดตรงจุดที่ต้องการได้ทันที
+                  </span>
+                </div>
+
                 {/* Real Interactive SVG GIS Map for Ang Kaeo */}
                 <InteractiveMap
                   mode="pin"
@@ -722,7 +742,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       setLocationAddress(data.addressText);
                     }
                   }}
-                  height="300px"
+                  height="340px"
                 />
               </div>
 

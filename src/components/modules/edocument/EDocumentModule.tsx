@@ -17,6 +17,7 @@ import {
   AlertCircle,
   X,
   FileDown,
+  Upload,
 } from 'lucide-react';
 import { EDocument, DocType, DocAttachment, Division } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
@@ -26,9 +27,13 @@ import {
   acknowledgeDocument,
   editDocumentReceiptNo,
   getNextReceiptNo,
+  addAttachmentToDocument,
+  removeAttachmentFromDocument,
   logPdpaAction,
 } from '../../../db/storage';
 import { FileViewerModal } from '../../common/FileViewerModal';
+import { PrintModal } from '../../common/PrintModal';
+import { printHtmlContent } from '../../../utils/printHelper';
 
 interface EDocumentModuleProps {
   documents: EDocument[];
@@ -82,6 +87,201 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
       uploadDate: new Date().toISOString().split('T')[0],
     },
   ]);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const extraFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // States for attaching documents to existing records
+  const [attachModalDoc, setAttachModalDoc] = useState<EDocument | null>(null);
+  const [attachSuccessMsg, setAttachSuccessMsg] = useState<string | null>(null);
+
+  // State for PrintModal
+  const [printSlipModalData, setPrintSlipModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle: string;
+    html: string;
+    fileName: string;
+  } | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const sizeStr =
+        file.size > 1024 * 1024
+          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.round(file.size / 1024)} KB`;
+
+      // Read small files (< 1.5MB) as base64 for offline preview; for larger files use blob URL to avoid quota limit
+      if (file.size <= 1.5 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const newAtt: DocAttachment = {
+            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: file.name,
+            fileType: file.type || 'application/octet-stream',
+            fileSize: sizeStr,
+            dataUrl: reader.result as string,
+            uploadDate: new Date().toISOString().split('T')[0],
+          };
+          setTempAttachments((prev) => [...prev, newAtt]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const objectUrl = URL.createObjectURL(file);
+        const newAtt: DocAttachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          fileType: file.type || 'application/octet-stream',
+          fileSize: sizeStr,
+          dataUrl: objectUrl,
+          uploadDate: new Date().toISOString().split('T')[0],
+        };
+        setTempAttachments((prev) => [...prev, newAtt]);
+      }
+    });
+
+    if (e.target) e.target.value = '';
+  };
+
+  const handleUploadExtraAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!attachModalDoc) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const sizeStr =
+        file.size > 1024 * 1024
+          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+          : `${Math.round(file.size / 1024)} KB`;
+
+      const saveAtt = (dataUrlStr?: string) => {
+        const newAtt: DocAttachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          fileType: file.type || 'application/octet-stream',
+          fileSize: sizeStr,
+          dataUrl: dataUrlStr,
+          uploadDate: new Date().toISOString().split('T')[0],
+        };
+        addAttachmentToDocument(attachModalDoc.id, newAtt, currentUser?.fullName || 'เจ้าหน้าที่');
+        setAttachSuccessMsg(`แนบไฟล์ ${file.name} เรียบร้อยแล้ว`);
+        setTimeout(() => setAttachSuccessMsg(null), 3000);
+      };
+
+      if (file.size <= 1.5 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = () => saveAtt(reader.result as string);
+        reader.readAsDataURL(file);
+      } else {
+        saveAtt(URL.createObjectURL(file));
+      }
+    });
+
+    if (e.target) e.target.value = '';
+  };
+
+  const printDocumentSlip = (doc: EDocument) => {
+    const attachmentsList =
+      doc.attachments && doc.attachments.length > 0
+        ? doc.attachments
+            .map((a, i) => `<li>${i + 1}. ${a.name} (${a.fileSize})</li>`)
+            .join('')
+        : '<li>- ไม่มีไฟล์แนบ -</li>';
+
+    const slipHtml = `
+      <div class="header-center">
+        <svg viewBox="0 0 100 100" class="garuda" style="width: 60px; height: 60px;">
+          <circle cx="50" cy="50" r="45" stroke="#1e3a8a" stroke-width="4" fill="#f8fafc" />
+          <path d="M 50 20 L 60 40 L 80 45 L 65 60 L 70 80 L 50 70 L 30 80 L 35 60 L 20 45 L 40 40 Z" fill="#2563eb" />
+        </svg>
+        <h1 class="org-title">องค์การบริหารส่วนตำบลอ่างแก้ว</h1>
+        <div class="org-sub">ตำบลอ่างแก้ว อำเภอโพธิ์ทอง จังหวัดอ่างทอง 14120</div>
+        <div style="margin-top: 10px; font-weight: bold; font-size: 15pt; text-decoration: underline;">
+          ใบลงทะเบียนรับหนังสือราชการ (E-Saraban Slip)
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13pt;">
+        <div><strong>เลขที่รับสารบรรณ:</strong> <span style="font-size: 16pt; font-weight: bold; color: #1e3a8a;">${doc.receiptNo}</span></div>
+        <div><strong>ปีงบประมาณ:</strong> ${doc.fiscalYear || '2570'}</div>
+      </div>
+
+      <table>
+        <tr>
+          <td style="width: 25%; font-weight: bold; background: #f9fafb;">เลขที่หนังสือจริง</td>
+          <td>${doc.bookNo || '-'}</td>
+          <td style="width: 20%; font-weight: bold; background: #f9fafb;">ลงวันที่</td>
+          <td>${doc.bookDate || '-'}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold; background: #f9fafb;">จาก (หน่วยงานต้นทาง)</td>
+          <td>${doc.fromOrg || '-'}</td>
+          <td style="font-weight: bold; background: #f9fafb;">ถึง</td>
+          <td>${doc.toOrg || 'อบต.อ่างแก้ว'}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold; background: #f9fafb;">เรื่อง</td>
+          <td colspan="3" style="font-size: 14pt; font-weight: bold;">${doc.subject}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold; background: #f9fafb;">ชั้นความเร็ว</td>
+          <td>${doc.urgency}</td>
+          <td style="font-weight: bold; background: #f9fafb;">ชั้นความลับ</td>
+          <td>${doc.secrecy}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold; background: #f9fafb;">วัน-เวลาลงทะเบียนรับ</td>
+          <td>${doc.receiveDate}</td>
+          <td style="font-weight: bold; background: #f9fafb;">ผู้ลงทะเบียน</td>
+          <td>${doc.registeredBy}</td>
+        </tr>
+        <tr>
+          <td style="font-weight: bold; background: #f9fafb;">หน่วยงานที่รับผิดชอบ</td>
+          <td colspan="3">${doc.dispatchedToDivisionName || 'รอดำเนินการส่งต่อเข้ากอง'}</td>
+        </tr>
+      </table>
+
+      <div style="margin-top: 15px; font-size: 13pt;">
+        <strong>รายการเอกสารแนบต้นฉบับ:</strong>
+        <ul style="margin-top: 5px; padding-left: 20px;">
+          ${attachmentsList}
+        </ul>
+      </div>
+
+      <div style="margin-top: 20px; padding: 12px; border: 1px dashed #4b5563; font-size: 12pt; background: #fafafa;">
+        <strong>คำสั่ง / การเกษียณหนังสือ:</strong>
+        <div style="height: 50px;"></div>
+      </div>
+
+      <div class="signatures-grid">
+        <div class="sig-box">
+          <div>ผู้รับหนังสือ (งานสารบรรณกลาง)</div>
+          <div class="sig-line"></div>
+          <div>(......................................................)</div>
+          <div>เจ้าหน้าที่สารบรรณกลาง</div>
+          <div>วันที่ ......../......../............</div>
+        </div>
+        <div class="sig-box">
+          <div>ผู้รับหนังสือ (สารบรรณกอง/ส่วนราชการ)</div>
+          <div class="sig-line"></div>
+          <div>(......................................................)</div>
+          <div>${doc.acknowledgedBy || 'เจ้าหน้าที่ผู้รับเอกสาร'}</div>
+          <div>วันที่ ......../......../............</div>
+        </div>
+      </div>
+    `;
+
+    setPrintSlipModalData({
+      isOpen: true,
+      title: `ใบลงทะเบียนรับหนังสือราชการ (${doc.receiptNo})`,
+      subtitle: `เรื่อง: ${doc.subject} • ประจำปีงบประมาณ ${doc.fiscalYear || '2570'}`,
+      html: slipHtml,
+      fileName: `ใบรับหนังสือ_${doc.receiptNo}`,
+    });
+  };
 
   // Permissions check
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -485,10 +685,10 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
                         </button>
                       </td>
 
-                      {/* Attachments & View/Print */}
+                      {/* Attachments & View Full File */}
                       <td className="py-3 px-4 align-top text-center">
                         {doc.attachments && doc.attachments.length > 0 ? (
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             {doc.attachments.map((att) => (
                               <button
                                 key={att.id}
@@ -499,17 +699,31 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
                                     receiptNo: doc.receiptNo,
                                   })
                                 }
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-[11px] transition cursor-pointer max-w-[130px] truncate"
-                                title={`คลิกเพื่อเปิดดูและสั่งพิมพ์เอกสาร: ${att.name}`}
+                                className="w-full inline-flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-900 border border-blue-300 text-xs font-semibold transition cursor-pointer shadow-2xs group"
+                                title={`คลิกเพื่อเปิดดูไฟล์แนบฉบับเต็ม: ${att.name}`}
                               >
-                                <Paperclip className="w-3 h-3 shrink-0" />
-                                <span className="truncate">{att.name}</span>
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Eye className="w-3.5 h-3.5 text-blue-600 group-hover:text-white shrink-0" />
+                                  <span className="truncate max-w-[110px] text-left">{att.name}</span>
+                                </div>
+                                <span className="text-[10px] bg-white group-hover:bg-blue-700 group-hover:text-white px-1.5 py-0.5 rounded text-blue-700 font-mono shrink-0">
+                                  ดูเต็ม
+                                </span>
                               </button>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-slate-400 text-[11px]">ไม่มีไฟล์</span>
+                          <div className="text-slate-400 text-[11px] mb-1">ไม่มีไฟล์แนบ</div>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setAttachModalDoc(doc)}
+                          className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold transition cursor-pointer shadow-2xs"
+                          title="แนบไฟล์เอกสารเพิ่มเติมเข้าหนังสือนี้"
+                        >
+                          <Upload className="w-2.5 h-2.5" />
+                          <span>+ แนบไฟล์</span>
+                        </button>
                       </td>
 
                       {/* Actions */}
@@ -539,22 +753,15 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
                           </button>
                         )}
 
-                        {/* Print document slip */}
-                        {doc.attachments.length > 0 && (
-                          <button
-                            onClick={() =>
-                              setViewingAttachment({
-                                att: doc.attachments[0],
-                                docTitle: doc.subject,
-                                receiptNo: doc.receiptNo,
-                              })
-                            }
-                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer"
-                            title="พิมพ์เอกสารแนบ"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        {/* Print official document slip */}
+                        <button
+                          onClick={() => printDocumentSlip(doc)}
+                          className="px-2 py-1 text-slate-600 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 rounded-lg transition cursor-pointer flex items-center gap-1 text-[11px] font-medium ml-auto"
+                          title="พิมพ์ใบรับหนังสือราชการ (ไม่ค้าง)"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-blue-600" />
+                          <span>พิมพ์ใบรับ</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -716,30 +923,42 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
               {/* Attachments Section */}
               <div className="pt-2 border-t border-slate-200">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="font-semibold text-slate-700">
-                    แนบไฟล์เอกสารต้นฉบับ (PDF, DOCX, ภาพ) ได้หลายไฟล์ต่อ 1 เลขรับ
+                  <label className="font-semibold text-slate-700 text-xs">
+                    แนบไฟล์เอกสารต้นฉบับ (PDF, DOCX, ภาพ, Excel)
                   </label>
                   <button
                     type="button"
-                    onClick={() => {
-                      const nextId = tempAttachments.length + 1;
-                      setTempAttachments([
-                        ...tempAttachments,
-                        {
-                          id: `att-sample-${nextId}`,
-                          name: `เอกสารแนบเพิ่มเติม_${nextId}.pdf`,
-                          fileType: 'application/pdf',
-                          fileSize: '950 KB',
-                          uploadDate: new Date().toISOString().split('T')[0],
-                        },
-                      ]);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 text-[11px] font-semibold cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold cursor-pointer transition shadow-2xs"
                   >
-                    + เพิ่มไฟล์แนบ
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>เลือกไฟล์จากเครื่อง</span>
                   </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
                 </div>
-                <div className="space-y-1.5">
+
+                {/* Drag-drop or select area */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50/60 hover:bg-blue-50/40 transition mb-2"
+                >
+                  <Upload className="w-5 h-5 mx-auto text-slate-400 mb-1" />
+                  <p className="text-xs text-slate-600 font-medium">
+                    คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    รองรับไฟล์ PDF, Word (.docx), Excel, รูปภาพ (.png, .jpg) ได้หลายไฟล์ต่อ 1 เลขรับ
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
                   {tempAttachments.map((att, idx) => (
                     <div
                       key={att.id}
@@ -753,7 +972,8 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
                       <button
                         type="button"
                         onClick={() => setTempAttachments(tempAttachments.filter((_, i) => i !== idx))}
-                        className="text-rose-500 hover:text-rose-700 p-1"
+                        className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
+                        title="ลบไฟล์"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -990,6 +1210,137 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
         receiptNo={viewingAttachment?.receiptNo}
         onClose={() => setViewingAttachment(null)}
       />
+
+      {/* ================= MODAL: ATTACH FILES TO EXISTING DOCUMENT ================= */}
+      {attachModalDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+            <div className="flex items-center justify-between px-6 py-4 bg-blue-900 text-white">
+              <div className="flex items-center gap-2">
+                <Paperclip className="w-5 h-5 text-blue-300" />
+                <div>
+                  <h3 className="font-bold text-sm">แนบไฟล์เอกสารราชการเพิ่มเติม</h3>
+                  <p className="text-[11px] text-blue-200">
+                    เลขที่รับ: {attachModalDoc.receiptNo} • {attachModalDoc.subject}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setAttachModalDoc(null);
+                  setAttachSuccessMsg(null);
+                }}
+                className="text-slate-300 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {attachSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{attachSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Upload Drop Zone */}
+              <div
+                onClick={() => extraFileInputRef.current?.click()}
+                className="border-2 border-dashed border-blue-300 hover:border-blue-600 rounded-2xl p-6 text-center cursor-pointer bg-blue-50/50 hover:bg-blue-50 transition"
+              >
+                <Upload className="w-8 h-8 mx-auto text-blue-600 mb-2" />
+                <p className="font-bold text-slate-800 text-sm">คลิกเพื่อเลือกไฟล์แนบจากเครื่อง</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  รองรับ PDF, Word (.docx), Excel, ไฟล์ภาพสแกน (.png, .jpg)
+                </p>
+                <input
+                  type="file"
+                  ref={extraFileInputRef}
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip"
+                  className="hidden"
+                  onChange={handleUploadExtraAttachment}
+                />
+              </div>
+
+              {/* Current Attachments List */}
+              <div>
+                <h4 className="font-bold text-slate-700 mb-2 flex items-center justify-between">
+                  <span>รายการไฟล์แนบในหนังสือนี้ ({attachModalDoc.attachments?.length || 0} ไฟล์):</span>
+                </h4>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {attachModalDoc.attachments && attachModalDoc.attachments.length > 0 ? (
+                    attachModalDoc.attachments.map((att) => (
+                      <div
+                        key={att.id}
+                        className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Paperclip className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span className="font-medium text-slate-800 truncate">{att.name}</span>
+                          <span className="text-[10px] text-slate-400 shrink-0">({att.fileSize})</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setViewingAttachment({
+                                att,
+                                docTitle: attachModalDoc.subject,
+                                receiptNo: attachModalDoc.receiptNo,
+                              })
+                            }
+                            className="p-1 text-blue-600 hover:text-blue-800"
+                            title="ดูเอกสาร"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeAttachmentFromDocument(attachModalDoc.id, att.id)}
+                            className="p-1 text-rose-500 hover:text-rose-700"
+                            title="ลบไฟล์แนบ"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-slate-400">ยังไม่มีไฟล์แนบในหนังสือฉบับนี้</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end p-4 bg-slate-50 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachModalDoc(null);
+                  setAttachSuccessMsg(null);
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs"
+              >
+                เสร็จสิ้น / ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= PRINT MODAL (SAFE PREVIEW & NO FREEZE) ================= */}
+      {printSlipModalData && (
+        <PrintModal
+          isOpen={printSlipModalData.isOpen}
+          title={printSlipModalData.title}
+          subtitle={printSlipModalData.subtitle}
+          htmlContent={printSlipModalData.html}
+          fileName={printSlipModalData.fileName}
+          onClose={() => setPrintSlipModalData(null)}
+        />
+      )}
     </div>
   );
 };

@@ -3,6 +3,7 @@ import {
   Village,
   User,
   EDocument,
+  DocAttachment,
   RepairItem,
   LicenseTypeConfig,
   LicenseApplication,
@@ -11,6 +12,7 @@ import {
   MaterialCategory,
   MaterialItem,
   MaterialTransaction,
+  MaterialRequisition,
   CmsSettings,
   PdpaAccessLog,
   DocType,
@@ -31,6 +33,7 @@ import {
   INITIAL_MATERIAL_CATEGORIES,
   INITIAL_MATERIALS,
   INITIAL_MATERIAL_TRANSACTIONS,
+  INITIAL_MATERIAL_REQUISITIONS,
   INITIAL_CMS,
   INITIAL_PDPA_LOGS,
 } from './initialData';
@@ -48,6 +51,7 @@ const STORAGE_KEYS = {
   MATERIAL_CATS: 'angkaeo_material_cats_v1',
   MATERIALS: 'angkaeo_materials_v1',
   MATERIAL_TXS: 'angkaeo_material_txs_v1',
+  REQUISITIONS: 'angkaeo_requisitions_v1',
   CMS: 'angkaeo_cms_v1',
   PDPA_LOGS: 'angkaeo_pdpa_logs_v1',
 };
@@ -88,8 +92,28 @@ function setStoredItem<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     notifyListeners();
-  } catch (e) {
+  } catch (e: any) {
     console.error(`Failed to write storage key ${key}`, e);
+    // If quota exceeded due to large attachments or logs, sanitize large dataUrl to save successfully
+    if (e?.name === 'QuotaExceededError' || e?.message?.includes('quota') || e?.code === 22) {
+      try {
+        if (key === STORAGE_KEYS.DOCUMENTS && Array.isArray(value)) {
+          const sanitizedDocs = (value as any[]).map((doc) => ({
+            ...doc,
+            attachments: (doc.attachments || []).map((att: any) => ({
+              ...att,
+              // Strip overly large base64 strings if storage is completely full
+              dataUrl: att.dataUrl && att.dataUrl.length > 50000 ? '' : att.dataUrl,
+            })),
+          }));
+          localStorage.setItem(key, JSON.stringify(sanitizedDocs));
+          notifyListeners();
+          return;
+        }
+      } catch (inner) {
+        console.error('Fallback sanitize write failed:', inner);
+      }
+    }
   }
 }
 
@@ -127,12 +151,13 @@ export function getDivisions(): Division[] {
   return getStoredItem<Division[]>(STORAGE_KEYS.DIVISIONS, INITIAL_DIVISIONS);
 }
 
-export function addDivision(name: string, code: string, directorName?: string): Division {
+export function addDivision(name: string, code: string, directorName?: string, shortCode?: string): Division {
   const divisions = getDivisions();
   const newDiv: Division = {
     id: `div-${Date.now()}`,
     name,
     code,
+    shortCode: shortCode || code.slice(0, 2),
     directorName,
     isDefault: false,
   };
@@ -352,6 +377,52 @@ export function acknowledgeDocument(docId: string, actorName: string, roleName: 
     timeline: [...docs[idx].timeline, newEvent],
   };
 
+  setStoredItem(STORAGE_KEYS.DOCUMENTS, docs);
+}
+
+export function addAttachmentToDocument(
+  docId: string,
+  attachment: DocAttachment,
+  actorName: string
+): void {
+  const docs = getDocuments();
+  const idx = docs.findIndex((d) => d.id === docId);
+  if (idx === -1) return;
+
+  const now = new Date();
+  const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const existingAttachments = docs[idx].attachments || [];
+
+  const newEvent: DocTrackingEvent = {
+    id: `tl-${Date.now()}`,
+    timestamp: timeStr,
+    step: 'แนบเอกสารเพิ่มเติม',
+    actionBy: actorName,
+    roleName: 'เจ้าหน้าที่ผู้แนบไฟล์',
+    note: `แนบเอกสารเพิ่มเติม: ${attachment.name} (${attachment.fileSize})`,
+  };
+
+  docs[idx] = {
+    ...docs[idx],
+    attachments: [...existingAttachments, attachment],
+    timeline: [...(docs[idx].timeline || []), newEvent],
+  };
+  setStoredItem(STORAGE_KEYS.DOCUMENTS, docs);
+}
+
+export function removeAttachmentFromDocument(
+  docId: string,
+  attachmentId: string
+): void {
+  const docs = getDocuments();
+  const idx = docs.findIndex((d) => d.id === docId);
+  if (idx === -1) return;
+
+  const existingAttachments = docs[idx].attachments || [];
+  docs[idx] = {
+    ...docs[idx],
+    attachments: existingAttachments.filter((a) => a.id !== attachmentId),
+  };
   setStoredItem(STORAGE_KEYS.DOCUMENTS, docs);
 }
 
@@ -729,6 +800,186 @@ export function approveMaterialTransaction(txId: string, approvedBy: string): vo
   setStoredItem(STORAGE_KEYS.MATERIAL_TXS, txs);
 }
 
+// ----------------- ใบเบิกวัสดุ (Material Requisitions) -----------------
+export function getMaterialRequisitions(): MaterialRequisition[] {
+  return getStoredItem<MaterialRequisition[]>(STORAGE_KEYS.REQUISITIONS, INITIAL_MATERIAL_REQUISITIONS);
+}
+
+export function saveMaterialRequisition(req: MaterialRequisition): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === req.id);
+  if (idx >= 0) {
+    reqs[idx] = req;
+  } else {
+    reqs.unshift(req);
+  }
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
+export function generateRequisitionNo(divisionShortCode: string): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const period = `${yyyy}${mm}`;
+  const prefix = `${divisionShortCode}-${period}-`;
+
+  const reqs = getMaterialRequisitions();
+  const matching = reqs.filter((r) => r.reqNo && r.reqNo.startsWith(prefix));
+
+  let maxSeq = 0;
+  matching.forEach((r) => {
+    const parts = r.reqNo.split('-');
+    if (parts.length >= 3) {
+      const seq = parseInt(parts[2], 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  const nextSeq = String(maxSeq + 1).padStart(3, '0');
+  return `${prefix}${nextSeq}`;
+}
+
+export function createMaterialRequisition(
+  data: Omit<MaterialRequisition, 'id' | 'reqNo' | 'status' | 'createdAt' | 'updatedAt'>
+): MaterialRequisition {
+  const reqNo = generateRequisitionNo(data.divisionShortCode);
+  const now = new Date().toISOString();
+  const newReq: MaterialRequisition = {
+    ...data,
+    id: `req-${Date.now()}`,
+    reqNo,
+    status: 'pending_approver',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const reqs = getMaterialRequisitions();
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, [newReq, ...reqs]);
+  return newReq;
+}
+
+export function approveRequisitionByDirector(
+  reqId: string,
+  approverId: string,
+  approverName: string,
+  comment?: string
+): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === reqId);
+  if (idx === -1) return;
+
+  const thaiTime = new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  reqs[idx] = {
+    ...reqs[idx],
+    status: 'pending_dispense',
+    approverId,
+    approverName,
+    approvedAt: thaiTime,
+    approverComment: comment || 'อนุมัติคำขอเบิก ส่งต่อเจ้าหน้าที่คลังพัสดุเพื่อจ่ายของ',
+    updatedAt: new Date().toISOString(),
+  };
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
+export function dispenseRequisitionByStockOfficer(
+  reqId: string,
+  dispenserId: string,
+  dispenserName: string,
+  comment?: string
+): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === reqId);
+  if (idx === -1) return;
+
+  const req = reqs[idx];
+  if (req.status === 'completed') return;
+
+  const thaiTime = new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  // ตัดสต็อกคลังของกองนั้นทันที
+  const materials = getMaterials();
+  const txs = getMaterialTransactions();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  req.items.forEach((item) => {
+    const matIdx = materials.findIndex((m) => m.id === item.materialId);
+    let newBal = 0;
+    if (matIdx >= 0) {
+      newBal = Math.max(0, materials[matIdx].currentStock - item.quantity);
+      materials[matIdx].currentStock = newBal;
+    }
+
+    // บันทึกทะเบียนประวัติการจ่ายออก
+    const newTx: MaterialTransaction = {
+      id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      docNo: req.reqNo,
+      materialId: item.materialId,
+      materialName: item.materialName,
+      divisionId: req.divisionId,
+      transactionType: 'out',
+      partyName: `${req.requesterName} (${req.requesterPosition})`,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      balanceQuantity: newBal,
+      transactionDate: todayStr,
+      fiscalYear: req.fiscalYear,
+      approvedBy: `${req.approverName || 'หัวหน้ากอง'} / ผู้จ่าย: ${dispenserName}`,
+      status: 'approved',
+      note: req.purpose,
+    };
+    txs.unshift(newTx);
+  });
+
+  setStoredItem(STORAGE_KEYS.MATERIALS, materials);
+  setStoredItem(STORAGE_KEYS.MATERIAL_TXS, txs);
+
+  reqs[idx] = {
+    ...req,
+    status: 'completed',
+    dispenserId,
+    dispenserName,
+    dispensedAt: thaiTime,
+    dispenserComment: comment || 'ตรวจสอบและตัดยอดสต็อกพัสดุเรียบร้อยแล้ว',
+    updatedAt: new Date().toISOString(),
+  };
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
+export function rejectRequisition(
+  reqId: string,
+  rejectedBy: string,
+  reason: string
+): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === reqId);
+  if (idx === -1) return;
+
+  const thaiTime = new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  reqs[idx] = {
+    ...reqs[idx],
+    status: 'rejected',
+    rejectedBy,
+    rejectedAt: thaiTime,
+    rejectReason: reason || 'ไม่อนุมัติ',
+    updatedAt: new Date().toISOString(),
+  };
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
 // ----------------- Backup / Reset Database -----------------
 export function exportEntireDatabaseJson(): string {
   const data = {
@@ -746,6 +997,7 @@ export function exportEntireDatabaseJson(): string {
     materialCategories: getMaterialCategories(),
     materials: getMaterials(),
     materialTransactions: getMaterialTransactions(),
+    requisitions: getMaterialRequisitions(),
     cms: getCmsSettings(),
     pdpaLogs: getPdpaLogs(),
   };
@@ -767,6 +1019,7 @@ export function importEntireDatabaseJson(jsonStr: string): boolean {
     if (data.materialCategories) setStoredItem(STORAGE_KEYS.MATERIAL_CATS, data.materialCategories);
     if (data.materials) setStoredItem(STORAGE_KEYS.MATERIALS, data.materials);
     if (data.materialTransactions) setStoredItem(STORAGE_KEYS.MATERIAL_TXS, data.materialTransactions);
+    if (data.requisitions) setStoredItem(STORAGE_KEYS.REQUISITIONS, data.requisitions);
     if (data.cms) setStoredItem(STORAGE_KEYS.CMS, data.cms);
     if (data.pdpaLogs) setStoredItem(STORAGE_KEYS.PDPA_LOGS, data.pdpaLogs);
     return true;
@@ -789,6 +1042,7 @@ export function resetDatabaseToDefault(): void {
   localStorage.removeItem(STORAGE_KEYS.MATERIAL_CATS);
   localStorage.removeItem(STORAGE_KEYS.MATERIALS);
   localStorage.removeItem(STORAGE_KEYS.MATERIAL_TXS);
+  localStorage.removeItem(STORAGE_KEYS.REQUISITIONS);
   localStorage.removeItem(STORAGE_KEYS.CMS);
   localStorage.removeItem(STORAGE_KEYS.PDPA_LOGS);
   notifyListeners();
