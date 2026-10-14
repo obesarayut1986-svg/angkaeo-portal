@@ -60,7 +60,7 @@ interface AdminManagementProps {
   cms: CmsSettings;
   pdpaLogs: PdpaAccessLog[];
   villages?: Village[];
-  initialSubTab?: 'users' | 'villages' | 'cms' | 'pdpa' | 'backup';
+  initialSubTab?: 'users' | 'villages' | 'cms' | 'pdpa' | 'backup' | 'line_oa';
 }
 
 export const AdminManagement: React.FC<AdminManagementProps> = ({
@@ -72,9 +72,19 @@ export const AdminManagement: React.FC<AdminManagementProps> = ({
   initialSubTab,
 }) => {
   const { currentUser } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'villages' | 'cms' | 'pdpa' | 'backup'>(
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'villages' | 'cms' | 'pdpa' | 'backup' | 'line_oa'>(
     initialSubTab || 'users'
   );
+
+  // LINE Official Account (LINE Messaging API) Settings & Simulator
+  const [lineChannelToken, setLineChannelToken] = useState(() => {
+    return localStorage.getItem('angkaeo_line_channel_token') || '';
+  });
+  const [lineTargetId, setLineTargetId] = useState(() => {
+    return localStorage.getItem('angkaeo_line_target_id') || '';
+  });
+  const [lineTestType, setLineTestType] = useState<'repair' | 'requisition' | 'edocument'>('repair');
+  const [lineTestStatus, setLineTestStatus] = useState<string | null>(null);
 
   // Village State
   const [villagesList, setVillagesList] = useState<Village[]>(villages || getVillages());
@@ -440,6 +450,17 @@ export const AdminManagement: React.FC<AdminManagementProps> = ({
               }`}
             >
               สำรอง & เชื่อมต่อฐานข้อมูลจริง
+            </button>
+            <button
+              onClick={() => setActiveSubTab('line_oa')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer ${
+                activeSubTab === 'line_oa'
+                  ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                  : 'text-emerald-700 hover:text-emerald-900'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>LINE OA (แทน Notify)</span>
             </button>
           </div>
         </div>
@@ -1037,6 +1058,274 @@ export const AdminManagement: React.FC<AdminManagementProps> = ({
               <RefreshCw className="w-4 h-4" />
               <span>รีเซ็ตข้อมูลตัวอย่าง</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= SUBTAB 6: LINE OFFICIAL ACCOUNT (LINE MESSAGING API) ================= */}
+      {activeSubTab === 'line_oa' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Status Clarification Banner */}
+          <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-emerald-800/60 relative overflow-hidden">
+            <div className="relative z-10 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-rose-500 text-white font-black text-xs">
+                  ⚠️ ประกาศสำคัญเกี่ยวกับ LINE
+                </span>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold text-xs border border-emerald-400/30">
+                  มาตรฐานใหม่: LINE Messaging API
+                </span>
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-black font-heading tracking-tight text-white">
+                ระบบแจ้งเตือนผ่าน LINE Official Account (LINE Messaging API)
+              </h3>
+
+              <div className="p-4 bg-rose-500/15 border border-rose-400/40 rounded-2xl text-xs sm:text-sm text-rose-100 leading-relaxed space-y-2">
+                <p>
+                  <strong>สถานะ LINE Notify:</strong> บริการ <strong>LINE Notify ได้ยุติการให้บริการอย่างเป็นทางการ (End of Life) ทั่วโลก เมื่อวันที่ 31 มีนาคม 2025</strong> โดย LINE Corporation ได้ปิดเซิร์ฟเวอร์และยกเลิกการออก Access Token ทั้งหมด
+                </p>
+                <p className="text-xs text-rose-200">
+                  <strong>แนวทางปฏิบัติใหม่ของ อบต.อ่างแก้ว:</strong> เปลี่ยนมาใช้ <strong>LINE Official Account (LINE OA) ผ่าน Messaging API</strong> ซึ่งเป็นมาตรฐานทางการเดียวที่ LINE รองรับในปัจจุบัน สามารถส่งแจ้งเตือนทั้งรายบุคคลและเข้ากลุ่มงานช่าง/ผู้บริหาร พร้อมการแสดงผลแบบ Flex Message สวยงามเป็นมืออาชีพ
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Configuration & Step-by-Step Guide */}
+            <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200 space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-base text-slate-900 font-heading">
+                    ตั้งค่าการเชื่อมต่อ LINE Messaging API
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    นำข้อมูลจาก LINE Developers Console มาบันทึกในระบบ
+                  </p>
+                </div>
+                <a
+                  href="https://developers.line.biz/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                >
+                  <span>LINE Developers</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Channel Access Token (Long-lived)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="eyJhbGciOiJIUzI1NiJ9.xxxxxxxxxxxxxxxxx..."
+                    value={lineChannelToken}
+                    onChange={(e) => {
+                      setLineChannelToken(e.target.value);
+                      localStorage.setItem('angkaeo_line_channel_token', e.target.value);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    คัดลอกได้จากแท็บ &quot;Messaging API&quot; ใน LINE Developers Console
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    ปลายทางผู้รับ (User ID หรือ Group ID ของกลุ่มงาน อบต.)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="เช่น Cxxxxxxxxxxxxxx (Group ID) หรือ Uxxxxxxxxxxxxxx (User ID)"
+                    value={lineTargetId}
+                    onChange={(e) => {
+                      setLineTargetId(e.target.value);
+                      localStorage.setItem('angkaeo_line_target_id', e.target.value);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    ID ของกลุ่มไลน์ช่าง หรือ ID ของ ผอ.กอง ที่ต้องการส่งข้อความเตือน
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-[11px] text-slate-600">
+                  <span className="font-bold text-slate-800">
+                    ขั้นตอนการเปิดใช้งาน LINE OA ฟรีสำหรับ อบต.อ่างแก้ว (3 ขั้นตอน):
+                  </span>
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>สร้างบัญชี LINE Official Account ที่ <a href="https://manager.line.biz/" target="_blank" rel="noreferrer" className="text-emerald-600 font-semibold underline">manager.line.biz</a> (ฟรี)</li>
+                    <li>เข้าสู่ระบบ <a href="https://developers.line.biz/" target="_blank" rel="noreferrer" className="text-emerald-600 font-semibold underline">developers.line.biz</a> แล้วกดสร้าง Provider & Messaging API Channel</li>
+                    <li>ที่แท็บ Messaging API กด Issue คัดลอก &quot;Channel Access Token&quot; มาใส่ในช่องด้านบน</li>
+                  </ol>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('angkaeo_line_channel_token', lineChannelToken);
+                      localStorage.setItem('angkaeo_line_target_id', lineTargetId);
+                      setLineTestStatus('บันทึกการตั้งค่า LINE สำเร็จเรียบร้อยแล้ว!');
+                      setTimeout(() => setLineTestStatus(null), 4000);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    บันทึกการตั้งค่า
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLineTestStatus('กำลังจำลองการส่งแจ้งเตือน Flex Message ไปยัง LINE OA...');
+                      setTimeout(() => {
+                        setLineTestStatus('✅ จำลองการส่งสำเร็จ: Flex Message พร้อมส่งไปยังกลุ่มไลน์ของ อบต.อ่างแก้ว เรียบร้อย!');
+                        setTimeout(() => setLineTestStatus(null), 5000);
+                      }, 1000);
+                    }}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition cursor-pointer"
+                  >
+                    ทดสอบส่งข้อความจำลอง
+                  </button>
+                </div>
+
+                {lineTestStatus && (
+                  <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-medium">
+                    {lineTestStatus}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Modern Flex Message Preview Mockup */}
+            <div className="bg-slate-100 rounded-3xl p-6 border border-slate-200 space-y-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+                    ตัวอย่างหน้าจอแจ้งเตือนจริงใน LINE (Flex Message Preview)
+                  </span>
+                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setLineTestType('repair')}
+                      className={`px-2 py-1 rounded-md font-bold transition cursor-pointer ${
+                        lineTestType === 'repair' ? 'bg-amber-500 text-slate-950' : 'text-slate-600'
+                      }`}
+                    >
+                      งานแจ้งซ่อม
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLineTestType('requisition')}
+                      className={`px-2 py-1 rounded-md font-bold transition cursor-pointer ${
+                        lineTestType === 'requisition' ? 'bg-blue-600 text-white' : 'text-slate-600'
+                      }`}
+                    >
+                      เบิกพัสดุ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLineTestType('edocument')}
+                      className={`px-2 py-1 rounded-md font-bold transition cursor-pointer ${
+                        lineTestType === 'edocument' ? 'bg-indigo-600 text-white' : 'text-slate-600'
+                      }`}
+                    >
+                      สารบรรณ
+                    </button>
+                  </div>
+                </div>
+
+                {/* Simulated LINE Chat Screen */}
+                <div className="mt-4 max-w-sm mx-auto bg-[#849ebf] p-4 rounded-3xl shadow-inner space-y-3">
+                  <div className="text-center text-[10px] text-white/80 font-medium">
+                    วันนี้ 12:45 น.
+                  </div>
+
+                  {/* Flex Message Bubble */}
+                  <div className="bg-white rounded-2xl overflow-hidden shadow-lg border border-slate-200 text-xs">
+                    {/* Bubble Header */}
+                    <div className="p-3 bg-blue-900 text-white flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] flex items-center justify-center">
+                          อบต
+                        </span>
+                        <span className="font-bold text-xs">อบต.อ่างแก้ว แจ้งเตือน</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500 text-white">
+                        {lineTestType === 'repair' ? 'ด่วนที่สุด' : 'รอพิจารณา'}
+                      </span>
+                    </div>
+
+                    {/* Bubble Body */}
+                    <div className="p-3.5 space-y-2 text-slate-800">
+                      {lineTestType === 'repair' && (
+                        <>
+                          <h5 className="font-bold text-sm text-slate-900">
+                            🛠️ มีเรื่องแจ้งซ่อมสาธารณูปโภคใหม่
+                          </h5>
+                          <div className="space-y-1 text-[11px] text-slate-600">
+                            <div><strong>ประเภท:</strong> ไฟฟ้าสาธารณะดับ ไฟทาง</div>
+                            <div><strong>สถานที่:</strong> หมู่ 3 ซอยวัดอ่างแก้ว (GPS: 14.654, 100.393)</div>
+                            <div><strong>ผู้แจ้ง:</strong> นายสมชาย ใจดี (081-234-5678)</div>
+                            <div><strong>เวลาที่แจ้ง:</strong> 13 ต.ค. 2569 เวลา 12:40 น.</div>
+                          </div>
+                        </>
+                      )}
+
+                      {lineTestType === 'requisition' && (
+                        <>
+                          <h5 className="font-bold text-sm text-slate-900">
+                            📦 ใบขอเบิกพัสดุรอ ผอ.กอง อนุมัติ
+                          </h5>
+                          <div className="space-y-1 text-[11px] text-slate-600">
+                            <div><strong>เลขที่ใบเบิก:</strong> REQ-ปล-2570/004</div>
+                            <div><strong>ผู้ขอเบิก:</strong> นางสาวรัตนา มีสุข (สำนักปลัด)</div>
+                            <div><strong>รายการ:</strong> แฟ้มเอกสารสันกว้าง 3 นิ้ว (จำนวน 5 แฟ้ม)</div>
+                            <div><strong>สถานะ:</strong> รอ ผอ.กอง พิจารณาลงนามอนุมัติ</div>
+                          </div>
+                        </>
+                      )}
+
+                      {lineTestType === 'edocument' && (
+                        <>
+                          <h5 className="font-bold text-sm text-slate-900">
+                            📄 หนังสือราชการด่วนที่สุดเข้าใหม่
+                          </h5>
+                          <div className="space-y-1 text-[11px] text-slate-600">
+                            <div><strong>เลขที่รับกลาง:</strong> 128/2570</div>
+                            <div><strong>จาก:</strong> ที่ว่าการอำเภอโพธิ์ทอง</div>
+                            <div><strong>เรื่อง:</strong> มาตรการเตรียมความพร้อมรับมือน้ำท่วมฉับพลัน</div>
+                            <div><strong>จ่ายให้:</strong> สำนักปลัด และ กองช่าง</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Bubble Footer Action Button */}
+                    <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-center">
+                      <button
+                        type="button"
+                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition"
+                      >
+                        แตะเพื่อเปิดระบบงาน อบต.
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 text-[11px] text-slate-500 space-y-1">
+                <span className="font-bold text-slate-700">ข้อดีของ LINE Official Account Messaging API:</span>
+                <p>• ไม่ถูกปิดบริการ (เป็นระบบหลักทางการของ LINE ในปัจจุบัน)</p>
+                <p>• รองรับปุ่มกดเปิดลิงก์เข้าไปยังหน้างานโดยตรง</p>
+                <p>• แยกการแจ้งเตือนตามกอง (กองช่าง, สำนักปลัด, ผอ.กอง) ได้อย่างแม่นยำ</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

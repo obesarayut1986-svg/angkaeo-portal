@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Rounded Container with Safe Padding for Maskable -->
+  <rect width="512" height="512" rx="110" fill="url(#bg)" />
+  
+  <!-- Outer Decorative Ring -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="url(#gold)" stroke-width="8" stroke-dasharray="12 8" opacity="0.8" />
+  <circle cx="256" cy="256" r="185" fill="#1e293b" fill-opacity="0.6" stroke="url(#gold)" stroke-width="4" />
+
+  <!-- Center Thai Temple & Government Gable Silhouette -->
+  <!-- Roof tier 1 -->
+  <path d="M256 100 L350 190 L330 190 L256 125 L182 190 L162 190 Z" fill="url(#gold)" />
+  <!-- Roof tier 2 -->
+  <path d="M256 140 L370 230 L350 230 L256 160 L162 230 L142 230 Z" fill="url(#gold)" />
+  
+  <!-- Main Building Structure -->
+  <rect x="180" y="230" width="152" height="120" rx="8" fill="url(#cyan)" opacity="0.9" />
+  
+  <!-- Pillars -->
+  <rect x="200" y="240" width="16" height="100" rx="4" fill="#ffffff" />
+  <rect x="248" y="240" width="16" height="100" rx="4" fill="#ffffff" />
+  <rect x="296" y="240" width="16" height="100" rx="4" fill="#ffffff" />
+  
+  <!-- Golden Base / Pedestal -->
+  <rect x="150" y="340" width="212" height="20" rx="6" fill="url(#gold)" />
+  <rect x="130" y="360" width="252" height="14" rx="4" fill="url(#gold)" opacity="0.9" />
+
+  <!-- Lotus Water waves underneath -->
+  <path d="M140 395 Q198 380 256 395 T372 395" fill="none" stroke="url(#cyan)" stroke-width="6" stroke-linecap="round" />
+  <path d="M160 415 Q208 405 256 415 T352 415" fill="none" stroke="url(#cyan)" stroke-width="4" stroke-linecap="round" opacity="0.7" />
+
+  <!-- Title Text Arc -->
+  <text x="256" y="455" font-family="sans-serif" font-weight="900" font-size="28" fill="#ffffff" text-anchor="middle" letter-spacing="2">อบต.อ่างแก้ว</text>
+  <text x="256" y="480" font-family="sans-serif" font-weight="600" font-size="16" fill="#93c5fd" text-anchor="middle">ANG KAEO LOCAL GOV</text>
+</svg>

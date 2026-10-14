@@ -18,6 +18,7 @@ import {
   Download,
   Share2,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import {
   MaterialItem,
@@ -30,9 +31,11 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import {
   saveMaterial,
+  deleteMaterial,
   createMaterialTransaction,
   approveMaterialTransaction,
   addMaterialCategory,
+  deleteMaterialCategory,
   addDivision,
   logPdpaAction,
   getMaterialRequisitions,
@@ -108,6 +111,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   // New Transaction Form (In / Out / Cross-Division)
   const [txType, setTxType] = useState<StockTransactionType>('out');
   const [txMaterialId, setTxMaterialId] = useState<string>('');
+  const [isReceivingNewMaterial, setIsReceivingNewMaterial] = useState(false);
   const [txDocNo, setTxDocNo] = useState('');
   const [txPartyName, setTxPartyName] = useState('');
   const [txPartyDropdown, setTxPartyDropdown] = useState('');
@@ -133,6 +137,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const isDivisionAdmin = isDivisionStockOfficer;
   const isStaff = currentUser?.role === 'staff' || canAccess('canRequestMaterial');
+
+  // Prevent requesters / external users from viewing officer/director internal tabs
+  React.useEffect(() => {
+    if (!isDivisionAdmin && !isDivisionDirector && (activeTab === 'transactions' || activeTab === 'pd4_report')) {
+      setActiveTab('requisitions');
+    }
+  }, [isDivisionAdmin, isDivisionDirector, activeTab]);
 
   // Filtered materials by current active division
   const currentDivMaterials = materials.filter((m) => {
@@ -207,10 +218,51 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const handleSaveTransaction = (e: React.FormEvent) => {
     e.preventDefault();
-    const mat = materials.find((m) => m.id === txMaterialId);
-    if (!mat) {
-      alert('กรุณาเลือกวัสดุ');
-      return;
+    const div = divisions.find((d) => d.id === selectedDivisionId) || divisions[0];
+
+    let targetMat: MaterialItem | undefined;
+
+    // Requirement 1: Adding a new material directly as part of receiving inventory
+    if (isReceivingNewMaterial && txType === 'in') {
+      if (!newItemName.trim()) {
+        alert('กรุณากรอกชื่อวัสดุใหม่');
+        return;
+      }
+      let finalCategory = newItemCategory;
+      if (isCustomNewItemCategory && customNewItemCategoryName.trim()) {
+        const savedCat = addMaterialCategory(customNewItemCategoryName.trim());
+        finalCategory = savedCat.name;
+      }
+      const code = `ว.${div.code}-${Date.now().toString().slice(-4)}`;
+      targetMat = {
+        id: `mat-${Date.now()}`,
+        divisionId: div.id,
+        divisionName: div.name,
+        code,
+        name: newItemName.trim(),
+        categoryName: finalCategory,
+        sizeOrSpec: newItemSize.trim(),
+        unit: newItemUnit.trim() || 'หน่วย',
+        currentStock: 0, // will be increased by the transaction below
+        unitPrice: newItemUnitPrice,
+        createdAt: new Date().toISOString().split('T')[0],
+      };
+      saveMaterial(targetMat);
+
+      logPdpaAction(
+        currentUser?.fullName || 'เจ้าหน้าที่พัสดุ',
+        'division_admin',
+        'create',
+        'inventory_material',
+        code,
+        `รับเข้าพัสดุและเพิ่มวัสดุใหม่เข้าคลัง: ${newItemName} (${div.name}) หมวด: ${finalCategory}`
+      );
+    } else {
+      targetMat = materials.find((m) => m.id === txMaterialId);
+      if (!targetMat) {
+        alert('กรุณาเลือกวัสดุ');
+        return;
+      }
     }
 
     const party = txPartyName.trim() || txPartyDropdown.trim() || 'ร้านค้า/เจ้าหน้าที่';
@@ -219,15 +271,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     createMaterialTransaction(
       {
         docNo: txDocNo.trim() || `บ${txType === 'in' ? 'ก' : 'ข'}.${selectedFiscalYear}/${Date.now().toString().slice(-4)}`,
-        materialId: mat.id,
-        materialName: mat.name,
-        divisionId: mat.divisionId,
+        materialId: targetMat.id,
+        materialName: targetMat.name,
+        divisionId: targetMat.divisionId,
         borrowingDivisionId: txBorrowingDivId || undefined,
         transactionType: txType,
         partyName: party,
         quantity: txQuantity,
-        unitPrice: mat.unitPrice,
-        totalPrice: txQuantity * mat.unitPrice,
+        unitPrice: targetMat.unitPrice,
+        totalPrice: txQuantity * targetMat.unitPrice,
         transactionDate: txDate,
         fiscalYear: selectedFiscalYear,
         approvedBy: autoApprove ? `${currentUser?.fullName} (${currentUser?.position})` : undefined,
@@ -242,13 +294,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       'staff',
       'create',
       'material_transaction',
-      mat.code,
-      `${txType === 'in' ? 'รับเข้า' : 'เบิกจ่าย'} ${mat.name} จำนวน ${txQuantity} ${mat.unit}`
+      targetMat.code,
+      `${txType === 'in' ? 'รับเข้า' : 'เบิกจ่าย'} ${targetMat.name} จำนวน ${txQuantity} ${targetMat.unit}`
     );
 
     setIsAddTxModalOpen(false);
+    setIsReceivingNewMaterial(false);
     setTxDocNo('');
     setTxPartyName('');
+    setNewItemName('');
+    setNewItemSize('');
   };
 
   const handleApproveTx = (txId: string) => {
@@ -315,29 +370,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Quick Actions */}
           <div className="flex flex-wrap items-center gap-2">
             {isDivisionAdmin && (
-              <>
-                <button
-                  onClick={() => setIsAddItemModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>เพิ่มวัสดุใหม่</span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (materials.length > 0) {
-                      setTxMaterialId(materials[0].id);
-                      setIsAddTxModalOpen(true);
-                    } else {
-                      alert('กรุณาเพิ่มรายการวัสดุก่อน');
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-900 hover:bg-indigo-950 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition"
-                >
-                  <ArrowDownLeft className="w-4 h-4" />
-                  <span>บันทึก รับ-เบิกจ่ายวัสดุ</span>
-                </button>
-              </>
+              <button
+                onClick={() => {
+                  setTxType('in');
+                  if (materials.length > 0) {
+                    setTxMaterialId(materials[0].id);
+                  }
+                  setIsReceivingNewMaterial(false);
+                  setIsAddTxModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition"
+                title="รับเข้าพัสดุเข้าคลัง พร้อมสร้างรายการวัสดุใหม่ได้ทันที"
+              >
+                <ArrowDownLeft className="w-4 h-4" />
+                <span>รับเข้าพัสดุ (พร้อมเพิ่มวัสดุใหม่)</span>
+              </button>
             )}
 
             <button
@@ -417,27 +464,31 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             >
               2. ทะเบียนคลังพัสดุประจำกอง
             </button>
-            <button
-              onClick={() => setActiveTab('transactions')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'transactions'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              3. ประวัติรับ-จ่าย (รออนุมัติ)
-            </button>
-            <button
-              onClick={() => setActiveTab('pd4_report')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                activeTab === 'pd4_report'
-                  ? 'bg-slate-900 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>4. แบบ พ.ด.4 บัญชีวัสดุ</span>
-            </button>
+            {(isDivisionAdmin || isDivisionDirector) && (
+              <>
+                <button
+                  onClick={() => setActiveTab('transactions')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    activeTab === 'transactions'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  3. บันทึกรับเข้า-จ่ายออก (จนท./ผอ.)
+                </button>
+                <button
+                  onClick={() => setActiveTab('pd4_report')}
+                  className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer ${
+                    activeTab === 'pd4_report'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>4. แบบ พ.ด.4 บัญชีวัสดุ</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -482,15 +533,29 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end gap-2">
               {isDivisionAdmin && (
-                <button
-                  onClick={() => setIsAddCatModalOpen(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
-                >
-                  <FolderPlus className="w-4 h-4" />
-                  <span>+ เพิ่มประเภทวัสดุใหม่</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => setIsAddCatModalOpen(true)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5 text-blue-600" />
+                    <span>+ เพิ่มประเภทวัสดุ</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTxType('in');
+                      setIsReceivingNewMaterial(true);
+                      setIsAddTxModalOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                    title="การเพิ่มวัสดุใหม่จะรวมอยู่ในเมนูรับเข้าวัสดุ เพื่อตรวจรับพัสดุเข้าคลังอย่างถูกต้อง"
+                  >
+                    <ArrowDownLeft className="w-3.5 h-3.5" />
+                    <span>+ รับเข้าพัสดุ / เพิ่มวัสดุใหม่</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -537,7 +602,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           {mat.currentStock} {mat.unit}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           onClick={() => {
                             setTxMaterialId(mat.id);
@@ -545,8 +610,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           }}
                           className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-[11px] transition cursor-pointer"
                         >
-                          เบิกจ่าย/รับเข้า
+                          รับเข้า/จ่ายออก
                         </button>
+                        {isDivisionAdmin && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`ต้องการลบวัสดุ "${mat.name}" ออกจากคลัง?`)) {
+                                deleteMaterial(mat.id);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title="ลบวัสดุ"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -673,13 +751,179 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           return true;
         });
 
-        // Handler to export Excel / CSV with UTF-8 BOM
+        // Handler to export Excel with Table Borders (แบบ พ.ด.๔ มีตารางออกมาให้ด้วย)
+        const handleExportPd4Excel = () => {
+          const divName = selectedDiv?.name || 'องค์การบริหารส่วนตำบลอ่างแก้ว';
+
+          let sheetsHtml = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+              <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+              <!--[if gte mso 9]>
+              <xml>
+                <x:ExcelWorkbook>
+                  <x:ExcelWorksheets>
+                    <x:ExcelWorksheet>
+                      <x:Name>บัญชีวัสดุ_พด4</x:Name>
+                      <x:WorksheetOptions>
+                        <x:DisplayGridlines/>
+                      </x:WorksheetOptions>
+                    </x:ExcelWorksheet>
+                  </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+              </xml>
+              <![endif]-->
+              <style>
+                body { font-family: 'Sarabun', 'TH Sarabun New', Tahoma, sans-serif; font-size: 11pt; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 25px; }
+                th { background-color: #e2e8f0; color: #0f172a; font-weight: bold; text-align: center; border: 1px solid #000000; padding: 6px; font-size: 10pt; }
+                td { border: 1px solid #000000; padding: 5px 6px; vertical-align: middle; font-size: 10pt; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .text-bold { font-weight: bold; }
+              </style>
+            </head>
+            <body>
+          `;
+
+          printableMaterials.forEach((mat) => {
+            const matTxs = currentDivTxs.filter((t) => t.materialId === mat.id);
+            // แสดงจากบนลงล่าง รายการใดทำก่อนให้อยู่ด้านบน (เรียงตามวันที่จากอดีตไปหาปัจจุบัน)
+            const sortedMatTxs = [...matTxs].sort((a, b) => {
+              const tA = new Date(a.transactionDate).getTime();
+              const tB = new Date(b.transactionDate).getTime();
+              if (tA !== tB) return tA - tB;
+              return a.id.localeCompare(b.id);
+            });
+
+            sheetsHtml += `
+              <table border="1" style="border-collapse: collapse; width: 100%; border: 1px solid #000000;">
+                <tr>
+                  <td colspan="11" align="right" style="border: none; font-size: 10pt; font-weight: bold;">แบบ พ.ด.๔</td>
+                </tr>
+                <tr>
+                  <td colspan="11" align="center" style="border: none; font-size: 16pt; font-weight: bold; padding: 4px;">บัญชีวัสดุ</td>
+                </tr>
+                <tr>
+                  <td colspan="11" align="center" style="border: none; font-size: 12pt; font-weight: bold;">${divName} องค์การบริหารส่วนตำบลอ่างแก้ว</td>
+                </tr>
+                <tr>
+                  <td colspan="11" align="center" style="border: none; font-size: 11pt; color: #334155; padding-bottom: 10px;">อำเภอโพธิ์ทอง จังหวัดอ่างทอง • ประจำปีงบประมาณ พ.ศ. ${selectedFiscalYear}</td>
+                </tr>
+                
+                <tr style="background-color: #f8fafc;">
+                  <td colspan="3" style="border: 1px solid #000000;"><strong>ประเภทวัสดุ:</strong> ${mat.categoryName}</td>
+                  <td colspan="5" style="border: 1px solid #000000;"><strong>ชื่อหรือชนิดพัสดุ:</strong> ${mat.name}</td>
+                  <td colspan="3" style="border: 1px solid #000000;"><strong>รหัสพัสดุ:</strong> ${mat.code}</td>
+                </tr>
+                <tr style="background-color: #f8fafc;">
+                  <td colspan="3" style="border: 1px solid #000000;"><strong>ขนาดหรือลักษณะ:</strong> ${mat.sizeOrSpec || '-'}</td>
+                  <td colspan="3" style="border: 1px solid #000000;"><strong>หน่วยนับ:</strong> ${mat.unit}</td>
+                  <td colspan="3" style="border: 1px solid #000000;"><strong>ที่เก็บ:</strong> ${mat.storageLocation || `คลังพัสดุ ${divName}`}</td>
+                  <td colspan="2" style="border: 1px solid #000000;"><strong>จำนวนสูง/ต่ำ:</strong> ${mat.maxStock || 100} / ${mat.minStock || 10}</td>
+                </tr>
+
+                <!-- Header with explicit borders for Excel -->
+                <tr style="background-color: #e2e8f0;">
+                  <th rowspan="2" style="border: 1px solid #000000; text-align: center;">วัน เดือน ปี</th>
+                  <th rowspan="2" style="border: 1px solid #000000; text-align: center;">รับจาก / จ่ายให้</th>
+                  <th rowspan="2" style="border: 1px solid #000000; text-align: center;">เลขที่เอกสาร</th>
+                  <th rowspan="2" style="border: 1px solid #000000; text-align: center;">ราคาต่อหน่วย (บาท)</th>
+                  <th colspan="2" style="border: 1px solid #000000; text-align: center;">รับ</th>
+                  <th colspan="2" style="border: 1px solid #000000; text-align: center;">จ่าย</th>
+                  <th colspan="2" style="border: 1px solid #000000; text-align: center;">คงเหลือ</th>
+                  <th rowspan="2" style="border: 1px solid #000000; text-align: center;">ลายมือชื่อ</th>
+                </tr>
+                <tr style="background-color: #e2e8f0;">
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวน</th>
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวนเงิน</th>
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวน</th>
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวนเงิน</th>
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวน</th>
+                  <th style="border: 1px solid #000000; text-align: center;">จำนวนเงิน</th>
+                </tr>
+            `;
+
+            if (sortedMatTxs.length === 0) {
+              sheetsHtml += `
+                <tr>
+                  <td colspan="11" align="center" style="border: 1px solid #000000; padding: 12px; color: #64748b;">ยังไม่มีรายการเคลื่อนไหวรับ-จ่ายในงวดนี้</td>
+                </tr>
+              `;
+            } else {
+              sortedMatTxs.forEach((t) => {
+                const isIn = t.transactionType === 'in';
+                const inQty = isIn ? t.quantity : '-';
+                const inTotal = isIn ? t.totalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
+                const outQty = !isIn ? t.quantity : '-';
+                const outTotal = !isIn ? t.totalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '-';
+                const balQty = t.balanceQuantity;
+                const balTotal = (t.balanceQuantity * t.unitPrice).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+                const signatory = t.signatoryName || t.partyName || '';
+
+                sheetsHtml += `
+                  <tr>
+                    <td align="center" style="border: 1px solid #000000;">${t.transactionDate}</td>
+                    <td style="border: 1px solid #000000;">${t.partyName}</td>
+                    <td align="center" style="border: 1px solid #000000;">${t.docNo}</td>
+                    <td align="right" style="border: 1px solid #000000;">${t.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td>
+                    <td align="center" style="border: 1px solid #000000;">${inQty}</td>
+                    <td align="right" style="border: 1px solid #000000;">${inTotal}</td>
+                    <td align="center" style="border: 1px solid #000000;">${outQty}</td>
+                    <td align="right" style="border: 1px solid #000000;">${outTotal}</td>
+                    <td align="center" style="border: 1px solid #000000; font-weight: bold;">${balQty}</td>
+                    <td align="right" style="border: 1px solid #000000; font-weight: bold;">${balTotal}</td>
+                    <td align="center" style="border: 1px solid #000000;">${signatory}</td>
+                  </tr>
+                `;
+              });
+            }
+
+            sheetsHtml += `
+                <tr><td colspan="11" style="border: none; height: 15px;"></td></tr>
+                <tr>
+                  <td colspan="5" align="center" style="border: none; padding-top: 15px;">
+                    ลงชื่อ........................................................เจ้าหน้าที่พัสดุ<br/>
+                    (${currentUser?.fullName || 'เจ้าพนักงานพัสดุ'})<br/>
+                    วันที่ ${new Date().toLocaleDateString('th-TH')}
+                  </td>
+                  <td colspan="6" align="center" style="border: none; padding-top: 15px;">
+                    ลงชื่อ........................................................ผู้อำนวยการกอง<br/>
+                    (${selectedDiv?.directorName || 'ผู้อำนวยการกอง'})<br/>
+                    ผู้อนุมัติการเบิกจ่าย
+                  </td>
+                </tr>
+                <tr><td colspan="11" style="border: none; height: 25px;"></td></tr>
+              </table>
+            `;
+          });
+
+          sheetsHtml += `</body></html>`;
+
+          const blob = new Blob([sheetsHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const catSuffix = printCategory !== 'all' ? `_${printCategory}` : '';
+          a.download = `ตารางบัญชีวัสดุ_พด4_${divName}${catSuffix}_${selectedFiscalYear}.xls`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        // Handler to export CSV with UTF-8 BOM
         const handleExportPd4Csv = () => {
           let csv = '\uFEFF'; // UTF-8 BOM for Microsoft Excel Thai support
           const divName = selectedDiv?.name || 'องค์การบริหารส่วนตำบลอ่างแก้ว';
 
           printableMaterials.forEach((mat) => {
             const matTxs = currentDivTxs.filter((t) => t.materialId === mat.id);
+            // รายการใดทำก่อนให้อยู่ด้านบน
+            const sortedMatTxs = [...matTxs].sort((a, b) => {
+              const tA = new Date(a.transactionDate).getTime();
+              const tB = new Date(b.transactionDate).getTime();
+              if (tA !== tB) return tA - tB;
+              return a.id.localeCompare(b.id);
+            });
 
             csv += `แบบ พ.ด.๔ บัญชีวัสดุ\n`;
             csv += `ส่วนราชการ,${divName} องค์การบริหารส่วนตำบลอ่างแก้ว อำเภอโพธิ์ทอง จังหวัดอ่างทอง\n`;
@@ -692,7 +936,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             // Table headers with swapped columns & signature at the end
             csv += `วัน เดือน ปี,รับจาก / จ่ายให้,เลขที่เอกสาร,ราคาต่อหน่วย (บาท),จำนวนรับ,จำนวนเงินรับ,จำนวนจ่าย,จำนวนเงินจ่าย,จำนวนคงเหลือ,จำนวนเงินคงเหลือ,ลายมือชื่อ\n`;
 
-            matTxs.forEach((t) => {
+            sortedMatTxs.forEach((t) => {
               const isIn = t.transactionType === 'in';
               const inQty = isIn ? t.quantity : '';
               const inTotal = isIn ? t.totalPrice : '';
@@ -729,18 +973,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     <span>รายงานบัญชีวัสดุ (แบบ พ.ด.๔ ตามระเบียบกระทรวงการคลังว่าด้วยการจัดซื้อจัดจ้างฯ)</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    เลือกกรองพิมพ์แยกตามประเภทวัสดุ รายการพัสดุเฉพาะ หรือสั่งพิมพ์แยกบัตรคุมพัสดุเป็นรายแผ่น
+                    แสดงรายการจากบนลงล่าง รายการใดทำก่อนอยู่ด้านบน • Export Excel มีตารางสมบูรณ์
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleExportPd4Excel}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                    title="ดาวน์โหลดไฟล์ Excel (.xls) พร้อมตารางเส้นขอบครบถ้วน"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Export Excel (มีตาราง)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={handleExportPd4Csv}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
-                    title="ดาวน์โหลดไฟล์ Excel CSV ภาษาไทย"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
+                    title="ดาวน์โหลดไฟล์ CSV สำหรับ Google Sheets"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Export Excel (CSV)</span>
+                    <span>CSV</span>
                   </button>
                   <button
                     type="button"
@@ -870,6 +1123,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             ) : (
               printableMaterials.map((mat, matIdx) => {
                 const matTxs = currentDivTxs.filter((t) => t.materialId === mat.id);
+                // แสดงจากบนลงล่าง รายการใดทำก่อนให้อยู่ด้านบน
+                const sortedMatTxs = [...matTxs].sort((a, b) => {
+                  const tA = new Date(a.transactionDate).getTime();
+                  const tB = new Date(b.transactionDate).getTime();
+                  if (tA !== tB) return tA - tB;
+                  return a.id.localeCompare(b.id);
+                });
 
                 return (
                   <div
@@ -949,7 +1209,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {matTxs.map((t, idx) => {
+                        {sortedMatTxs.map((t, idx) => {
                           const isIn = t.transactionType === 'in';
                           return (
                             <tr key={idx} className="text-slate-800">
@@ -989,7 +1249,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                             </tr>
                           );
                         })}
-                        {matTxs.length === 0 && (
+                        {sortedMatTxs.length === 0 && (
                           <tr>
                             <td colSpan={11} className="border border-slate-800 p-4 text-center text-slate-400">
                               ยังไม่มีรายการเคลื่อนไหวรับ-จ่ายในงวดนี้
@@ -1200,20 +1460,186 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">เลือกวัสดุ</label>
-                <select
-                  value={txMaterialId}
-                  onChange={(e) => setTxMaterialId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
-                >
-                  {materials.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} (คงเหลือ: {m.currentStock} {m.unit}) - {m.divisionName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Material Selection or Add New Material during Inbound Intake */}
+              {txType === 'in' ? (
+                <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-800">
+                      การระบุรายการวัสดุรับเข้า:
+                    </label>
+                    <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300">
+                      <button
+                        type="button"
+                        onClick={() => setIsReceivingNewMaterial(false)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold cursor-pointer ${
+                          !isReceivingNewMaterial
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        เลือกวัสดุที่มีอยู่เดิม
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsReceivingNewMaterial(true)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-bold cursor-pointer flex items-center gap-1 ${
+                          isReceivingNewMaterial
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'text-emerald-700 hover:text-emerald-900'
+                        }`}
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>เพิ่มวัสดุใหม่เข้าคลัง</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isReceivingNewMaterial ? (
+                    <div>
+                      <select
+                        value={txMaterialId}
+                        onChange={(e) => setTxMaterialId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                      >
+                        {materials.filter(m => m.divisionId === selectedDivisionId).length === 0 ? (
+                          <option value="">-- ยังไม่มีวัสดุในกองนี้ กรุณากดปุ่มเพิ่มวัสดุใหม่ด้านบน --</option>
+                        ) : (
+                          materials
+                            .filter(m => m.divisionId === selectedDivisionId)
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                [{m.code}] {m.name} (คงเหลือ: {m.currentStock} {m.unit}) - @{m.unitPrice} ฿
+                              </option>
+                            ))
+                        )}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-[11px]">
+                        ✨ <strong>เพิ่มวัสดุใหม่:</strong> ระบบจะบันทึกเพิ่มรหัสวัสดุใหม่เข้าทะเบียนคลัง และบันทึกยอดรับเข้าสต็อกพร้อมกันในขั้นตอนเดียว
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          ชื่อรายการวัสดุใหม่ <span className="text-rose-600">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required={isReceivingNewMaterial}
+                          placeholder="เช่น แฟ้มสันกว้าง 3 นิ้ว F4, ปากกาลูกลื่นสีน้ำเงิน"
+                          value={newItemName}
+                          onChange={(e) => setNewItemName(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block font-semibold text-slate-700">หมวดหมู่วัสดุ</label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCustomNewItemCategory(!isCustomNewItemCategory);
+                              if (!isCustomNewItemCategory) setCustomNewItemCategoryName('');
+                            }}
+                            className="text-[11px] text-blue-600 hover:text-blue-800 font-bold cursor-pointer underline flex items-center gap-0.5"
+                          >
+                            {isCustomNewItemCategory ? '← เลือกจากหมวดเดิม' : '➕ เพิ่มประเภทใหม่'}
+                          </button>
+                        </div>
+                        {isCustomNewItemCategory ? (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              required={isReceivingNewMaterial && isCustomNewItemCategory}
+                              placeholder="พิมพ์ชื่อประเภทวัสดุใหม่ เช่น วัสดุยานพาหนะ, วัสดุไฟฟ้า..."
+                              value={customNewItemCategoryName}
+                              onChange={(e) => setCustomNewItemCategoryName(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-blue-400 bg-blue-50/70 text-blue-900 font-medium text-xs focus:ring-2 focus:ring-blue-500"
+                            />
+                            <p className="text-[10px] text-blue-700">
+                              * ระบบจะบันทึกประเภทนี้เข้าสู่ระบบอัตโนมัติ เพื่อให้เลือกได้ในครั้งต่อไป
+                            </p>
+                          </div>
+                        ) : (
+                          <select
+                            value={newItemCategory}
+                            onChange={(e) => {
+                              if (e.target.value === '__add_new__') {
+                                setIsCustomNewItemCategory(true);
+                                setCustomNewItemCategoryName('');
+                              } else {
+                                setNewItemCategory(e.target.value);
+                              }
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                          >
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                            <option value="__add_new__">➕ เพิ่มประเภทวัสดุใหม่...</option>
+                          </select>
+                        )}
+                      </div>
+
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">หน่วยนับ <span className="text-rose-600">*</span></label>
+                          <input
+                            type="text"
+                            required={isReceivingNewMaterial}
+                            placeholder="รีม / เล่ม / ด้าม / กล่อง"
+                            value={newItemUnit}
+                            onChange={(e) => setNewItemUnit(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">ขนาด / ลักษณะ</label>
+                          <input
+                            type="text"
+                            placeholder="เช่น A4 หรือ 0.5 มม."
+                            value={newItemSize}
+                            onChange={(e) => setNewItemSize(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">ราคาต่อหน่วย (บาท) <span className="text-rose-600">*</span></label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            required={isReceivingNewMaterial}
+                            value={newItemUnitPrice}
+                            onChange={(e) => setNewItemUnitPrice(Number(e.target.value))}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">เลือกวัสดุที่จะตัดจ่าย</label>
+                  <select
+                    value={txMaterialId}
+                    onChange={(e) => setTxMaterialId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                  >
+                    {materials
+                      .filter(m => m.divisionId === selectedDivisionId)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          [{m.code}] {m.name} (คงเหลือ: {m.currentStock} {m.unit})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               {/* Requirement: Default to current division, but support Cross-Division borrowing */}
               <div>

@@ -17,6 +17,7 @@ import {
   getMaterialRequisitions,
   getMaterialCategories,
   getDivisions,
+  getVillages,
   getCmsSettings,
   getUsers,
   getPdpaLogs,
@@ -34,6 +35,7 @@ import {
   MaterialRequisition,
   MaterialCategory,
   Division,
+  Village,
   CmsSettings,
   User,
   PdpaAccessLog,
@@ -83,6 +85,7 @@ function MainApp() {
   const [requisitions, setRequisitions] = useState<MaterialRequisition[]>(getMaterialRequisitions());
   const [materialCats, setMaterialCats] = useState<MaterialCategory[]>(getMaterialCategories());
   const [divisions, setDivisions] = useState<Division[]>(getDivisions());
+  const [villages, setVillages] = useState<Village[]>(getVillages());
   const [cms, setCms] = useState<CmsSettings>(getCmsSettings());
   const [users, setUsers] = useState<User[]>(getUsers());
   const [pdpaLogs, setPdpaLogs] = useState<PdpaAccessLog[]>(getPdpaLogs());
@@ -99,6 +102,7 @@ function MainApp() {
     setRequisitions(getMaterialRequisitions());
     setMaterialCats(getMaterialCategories());
     setDivisions(getDivisions());
+    setVillages(getVillages());
     setCms(getCmsSettings());
     setUsers(getUsers());
     setPdpaLogs(getPdpaLogs());
@@ -156,6 +160,10 @@ function MainApp() {
         }}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onOpenLogin={() => setIsLoginModalOpen(true)}
+        onNavigateTab={(tab) => {
+          setIsPublicMode(false);
+          setCurrentTab(tab);
+        }}
         isMobileMenuOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
@@ -198,6 +206,8 @@ function MainApp() {
                   applications={licenseApps}
                   dutyRosters={dutyRosters}
                   materials={materials}
+                  divisions={divisions}
+                  villages={villages}
                   onNavigateTab={(tab) => setCurrentTab(tab)}
                 />
               )}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FileText,
   Wrench,
@@ -23,8 +23,12 @@ import {
   DutyRosterEntry,
   MaterialItem,
   CmsSettings,
+  Division,
+  Village,
 } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
+import { ExecutiveDashboard } from './ExecutiveDashboard';
+import { Sparkles, LayoutDashboard } from 'lucide-react';
 
 interface DashboardOverviewProps {
   cms: CmsSettings;
@@ -33,6 +37,8 @@ interface DashboardOverviewProps {
   applications: LicenseApplication[];
   dutyRosters: DutyRosterEntry[];
   materials: MaterialItem[];
+  divisions?: Division[];
+  villages?: Village[];
   onNavigateTab: (tab: string) => void;
 }
 
@@ -43,6 +49,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   applications,
   dutyRosters,
   materials,
+  divisions = [],
+  villages = [],
   onNavigateTab,
 }) => {
   const { currentUser } = useAuth();
@@ -50,9 +58,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   // Metrics & Scoping
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isCentralSaraban = currentUser?.role === 'central_saraban';
-  const isExecutive = currentUser?.role === 'executive';
+  const isExecutive = currentUser?.role === 'executive' || currentUser?.role === 'division_director';
   const isGlobal = isSuperAdmin || isCentralSaraban || isExecutive;
   const userDivId = currentUser?.divisionId;
+
+  // View mode: Operational vs Executive BI
+  const [viewMode, setViewMode] = useState<'operational' | 'executive'>(
+    isExecutive || isSuperAdmin ? 'executive' : 'operational'
+  );
 
   const relevantDocs = documents.filter((d) => {
     if (!isGlobal && userDivId) {
@@ -105,25 +118,67 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Switcher */}
+            <div className="bg-white/10 p-1 rounded-xl flex items-center border border-white/20 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setViewMode('executive')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  viewMode === 'executive'
+                    ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
+                    : 'text-blue-200 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>แดชบอร์ดผู้บริหาร (BI)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('operational')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  viewMode === 'operational'
+                    ? 'bg-white text-slate-950 font-bold shadow-xs'
+                    : 'text-blue-200 hover:text-white'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span>ภาพรวมปฏิบัติการ</span>
+              </button>
+            </div>
+
             <button
               onClick={() => onNavigateTab('edocument')}
               className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <FileText className="w-4 h-4" />
-              <span>สารบรรณกลาง/กอง</span>
+              <span>สารบรรณ</span>
             </button>
             <button
               onClick={() => onNavigateTab('repairs')}
               className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Wrench className="w-4 h-4 text-slate-950" />
-              <span>งานแจ้งซ่อมบำรุง</span>
+              <span>แจ้งซ่อม</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 4 Stat Cards */}
+      {/* Render Executive BI Dashboard if selected */}
+      {viewMode === 'executive' ? (
+        <ExecutiveDashboard
+          cms={cms}
+          documents={documents}
+          repairs={repairs}
+          applications={applications}
+          materials={materials}
+          divisions={divisions}
+          villages={villages}
+          onNavigateTab={onNavigateTab}
+        />
+      ) : (
+        <>
+          {/* 4 Operational Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Documents */}
         <div
@@ -357,6 +412,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 };

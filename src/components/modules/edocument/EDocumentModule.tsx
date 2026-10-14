@@ -21,9 +21,11 @@ import {
   Trash2,
   CheckSquare,
   ShieldAlert,
+  Download,
 } from 'lucide-react';
 import { EDocument, DocType, DocAttachment, Division } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
+import { exportDocumentsToExcel } from '../../../utils/exportUtils';
 import {
   createDocument,
   dispatchDocument,
@@ -37,6 +39,7 @@ import {
   logPdpaAction,
 } from '../../../db/storage';
 import { FileViewerModal } from '../../common/FileViewerModal';
+import { DocumentViewerModal } from './DocumentViewerModal';
 import { PrintModal } from '../../common/PrintModal';
 import { printHtmlContent } from '../../../utils/printHelper';
 
@@ -62,14 +65,14 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
   const userDivisionId = currentUser?.divisionId;
   const userDivision = divisions.find((d) => d.id === userDivisionId);
 
-  // Search & Filter state
+  // Search & Filter state - Default to Calendar Year 2569 (ปีปฏิทิน พ.ศ. 2569)
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterDivision, setFilterDivision] = useState<string>(
     !isGlobalViewer && userDivisionId ? userDivisionId : 'all'
   );
-  const [filterFiscalYear, setFilterFiscalYear] = useState<string>('2570');
-  const [newDocFiscalYear, setNewDocFiscalYear] = useState<string>('2570');
+  const [filterFiscalYear, setFilterFiscalYear] = useState<string>('2569');
+  const [newDocFiscalYear, setNewDocFiscalYear] = useState<string>('2569');
 
   // Modals
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -78,6 +81,7 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
   const [editReceiptDoc, setEditReceiptDoc] = useState<EDocument | null>(null);
   const [newReceiptNoInput, setNewReceiptNoInput] = useState('');
   const [editReceiptReason, setEditReceiptReason] = useState('');
+  const [viewingDocDetail, setViewingDocDetail] = useState<EDocument | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<{
     att: DocAttachment;
     docTitle: string;
@@ -234,7 +238,7 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
       <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13pt;">
         <div><strong>เลขที่รับสารบรรณกลาง:</strong> <span style="font-size: 16pt; font-weight: bold; color: #1e3a8a;">${doc.receiptNo}</span></div>
         <div><strong>เลขที่รับกอง (${doc.dispatchedToDivisionName || 'สังกัดกอง'}):</strong> <span style="font-size: 16pt; font-weight: bold; color: #047857;">${doc.divisionReceiptNo || 'รอรับหนังสือ'}</span></div>
-        <div><strong>ปีงบประมาณ:</strong> ${doc.fiscalYear || '2570'}</div>
+        <div><strong>ปีปฏิทิน (พ.ศ.):</strong> ${doc.fiscalYear || '2569'}</div>
       </div>
 
       <table>
@@ -353,7 +357,7 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
     setNewSubject('');
     setNewFromOrg('');
     setNewDispatchedDivId('');
-    setNewDocFiscalYear(filterFiscalYear !== 'all' ? filterFiscalYear : '2570');
+    setNewDocFiscalYear(filterFiscalYear !== 'all' ? filterFiscalYear : '2569');
     setIsRegisterModalOpen(true);
   };
 
@@ -364,7 +368,7 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
       return;
     }
 
-    const regYear = newDocFiscalYear.trim() || '2570';
+    const regYear = newDocFiscalYear.trim() || '2569';
     const autoReceiptNo = getNextReceiptNo(regYear);
     const targetDiv = divisions.find((d) => d.id === newDispatchedDivId);
 
@@ -507,14 +511,30 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
                 <h2 className="text-xl font-bold text-slate-900 font-heading">
                   ระบบสารบรรณอิเล็กทรอนิกส์ (E-Document)
                 </h2>
-                <p className="text-xs text-slate-500">
-                  ตามระเบียบสำนักนายกรัฐมนตรีว่าด้วยงานสารบรรณ • ทะเบียนรับ-ส่งกลาง และการจ่ายหนังสือสู่กอง
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                    <Calendar className="w-3 h-3 text-blue-600" />
+                    <span>รอบปีสารบรรณ: ปีปฏิทิน พ.ศ. 2569 (0001/2569)</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    • ตามระเบียบสำนักนายกรัฐมนตรีฯ (เริ่ม 1 ม.ค. 2570 จะขึ้นรอบ 2570 / ระบบพัสดุใช้ปีงบประมาณ 2570)
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => exportDocumentsToExcel(filteredDocs)}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer shrink-0"
+              title="ส่งออกสมุดทะเบียนหนังสือเป็นไฟล์ Excel (.xlsx)"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Excel ทะเบียนหนังสือ</span>
+            </button>
+
             {isCentralSaraban ? (
               <button
                 onClick={handleOpenRegisterModal}
@@ -587,18 +607,20 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
             )}
           </div>
 
-          {/* Fiscal Year Filter */}
+          {/* Calendar Year Filter */}
           <div>
             <select
               value={filterFiscalYear}
               onChange={(e) => setFilterFiscalYear(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none font-semibold text-blue-900"
+              className="w-full px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/60 focus:outline-none font-semibold text-blue-900"
+              title="เลือกรอบปีปฏิทินงานสารบรรณ (พ.ศ.)"
             >
-              <option value="2571">ปีงบประมาณ 2571</option>
-              <option value="2570">ปีงบประมาณ 2570 (ปัจจุบัน)</option>
-              <option value="2569">ปีงบประมาณ 2569</option>
-              <option value="2568">ปีงบประมาณ 2568</option>
-              <option value="all">ทุกปีงบประมาณ</option>
+              <option value="2569">พ.ศ. 2569 (ปีปัจจุบันตามปฏิทิน)</option>
+              <option value="2570">พ.ศ. 2570 (เริ่ม 1 ม.ค. 2570)</option>
+              <option value="2571">พ.ศ. 2571 (รองรับปี 2571)</option>
+              <option value="2572">พ.ศ. 2572</option>
+              <option value="2568">พ.ศ. 2568</option>
+              <option value="all">ทุกปี พ.ศ. (ทั้งหมด)</option>
             </select>
           </div>
         </div>
@@ -711,12 +733,20 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
 
                       {/* Book No & Subject */}
                       <td className="py-3 px-4 align-top max-w-xs">
-                        <div className="font-mono text-[11px] text-slate-500 font-medium">
-                          {doc.bookNo}
-                        </div>
-                        <div className="font-semibold text-slate-900 text-xs mt-0.5 line-clamp-2">
-                          {doc.subject}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setViewingDocDetail(doc)}
+                          className="text-left group cursor-pointer block w-full focus:outline-none"
+                          title="คลิกเพื่อเปิดอ่านหนังสือราชการฉบับเต็ม"
+                        >
+                          <div className="font-mono text-[11px] text-blue-700 font-bold group-hover:text-blue-900 group-hover:underline flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span>{doc.bookNo}</span>
+                          </div>
+                          <div className="font-semibold text-slate-900 text-xs mt-0.5 line-clamp-2 group-hover:text-blue-700 transition">
+                            {doc.subject}
+                          </div>
+                        </button>
                         <div className="flex items-center gap-2 mt-1">
                           <span
                             className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -849,6 +879,17 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
 
                       {/* Actions */}
                       <td className="py-3 px-4 align-top text-right space-y-1">
+                        {/* Primary View Official Document Button */}
+                        <button
+                          type="button"
+                          onClick={() => setViewingDocDetail(doc)}
+                          className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5 ml-auto"
+                          title="เปิดอ่านเนื้อหาหนังสือราชการฉบับเต็ม"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>ดูหนังสือ</span>
+                        </button>
+
                         {/* If dispatched, division staff can ACKNOWLEDGE with automatic division receipt number */}
                         {canAcknowledge && (
                           <button
@@ -926,18 +967,18 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
             <form onSubmit={handleSaveDocument} className="p-6 overflow-y-auto space-y-4 text-xs">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-700">ปีงบประมาณ:</span>
+                  <span className="font-semibold text-slate-700">ปีปฏิทิน (พ.ศ.):</span>
                   <input
                     type="text"
                     value={newDocFiscalYear}
                     onChange={(e) => setNewDocFiscalYear(e.target.value)}
-                    placeholder="2570"
+                    placeholder="2569"
                     className="w-20 px-2 py-1 rounded-lg border border-blue-300 bg-white font-mono font-bold text-center text-blue-900"
                   />
                   <span>
                     เลขที่รับอัตโนมัติ:{' '}
                     <span className="font-mono font-bold text-sm text-blue-800">
-                      {getNextReceiptNo(newDocFiscalYear || '2570')}
+                      {getNextReceiptNo(newDocFiscalYear || '2569')}
                     </span>
                   </span>
                 </div>
@@ -1337,7 +1378,17 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
         </div>
       )}
 
-      {/* File Viewer Modal (View & Print) */}
+      {/* Document Viewer Modal (View Full Official Letter & Seals) */}
+      <DocumentViewerModal
+        document={viewingDocDetail}
+        onClose={() => setViewingDocDetail(null)}
+        onViewAttachment={(att, docTitle, receiptNo) =>
+          setViewingAttachment({ att, docTitle, receiptNo })
+        }
+        onPrintSlip={printDocumentSlip}
+      />
+
+      {/* File Viewer Modal (View & Print Attachments) */}
       <FileViewerModal
         attachment={viewingAttachment ? viewingAttachment.att : null}
         documentTitle={viewingAttachment?.docTitle}
@@ -1656,6 +1707,28 @@ export const EDocumentModule: React.FC<EDocumentModuleProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ================= MODAL: OFFICIAL THAI GOVERNMENT DOCUMENT VIEWER ================= */}
+      {viewingDocDetail && (
+        <DocumentViewerModal
+          document={viewingDocDetail}
+          onClose={() => setViewingDocDetail(null)}
+          onViewAttachment={(att, docTitle, receiptNo) =>
+            setViewingAttachment({ att, docTitle, receiptNo })
+          }
+          onPrintSlip={(doc) => printDocumentSlip(doc)}
+        />
+      )}
+
+      {/* ================= MODAL: FILE ATTACHMENT VIEWER ================= */}
+      {viewingAttachment && (
+        <FileViewerModal
+          attachment={viewingAttachment.att}
+          documentTitle={viewingAttachment.docTitle}
+          receiptNo={viewingAttachment.receiptNo}
+          onClose={() => setViewingAttachment(null)}
+        />
       )}
 
       {/* ================= PRINT MODAL (SAFE PREVIEW & NO FREEZE) ================= */}

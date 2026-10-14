@@ -321,7 +321,8 @@ export type RequisitionStatus =
   | 'pending_approver'  // รอหัวหน้ากองอนุมัติ
   | 'pending_dispense'  // หัวหน้ากองอนุมัติแล้ว รอ จนท.พัสดุจ่ายวัสดุ/ตัดสต็อก
   | 'completed'         // จ่ายวัสดุและตัดสต็อกเรียบร้อยแล้ว
-  | 'rejected';         // ไม่อนุมัติ
+  | 'rejected'          // ไม่อนุมัติ
+  | 'cancelled';        // ยกเลิก / แก้ไขข้อผิดพลาด
 
 export interface RequisitionItem {
   materialId: string;
@@ -366,6 +367,11 @@ export interface MaterialRequisition {
   rejectedBy?: string;
   rejectedAt?: string;
   rejectReason?: string;
+
+  // กรณียกเลิก / แก้ไขข้อผิดพลาด
+  cancelledBy?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
 
   fiscalYear: string;
   createdAt: string;

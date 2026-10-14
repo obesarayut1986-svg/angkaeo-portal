@@ -144,6 +144,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     initialCoords || { lat: ANG_KAEO_HQ.lat, lng: ANG_KAEO_HQ.lng }
   );
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsNotice, setGpsNotice] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pinSuccessNotice, setPinSuccessNotice] = useState<string | null>(null);
 
@@ -186,6 +187,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     setTimeout(() => setPinSuccessNotice(null), 4000);
   };
 
+  const applyCoordsRef = useRef(applyCoordinates);
+  applyCoordsRef.current = applyCoordinates;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
   // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -199,7 +205,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         zoom: 15,
         zoomControl: false,
         attributionControl: true,
-      });
+        // Disable Leaflet synthetic tap which swallows touch clicks on mobile Android/iOS
+        tap: false,
+      } as any);
 
       // OpenStreetMap Standard Tiles
       const osmTileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -214,10 +222,45 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       // Handle Map Click for Pin Mode
       map.on('click', (e: L.LeafletMouseEvent) => {
-        if (mode === 'pin') {
-          applyCoordinates(e.latlng.lat, e.latlng.lng);
+        if (modeRef.current === 'pin') {
+          applyCoordsRef.current(e.latlng.lat, e.latlng.lng);
         }
       });
+
+      // Direct mobile touch fallback (in-app browsers like Messenger/Line often don't trigger click)
+      const container = mapContainerRef.current;
+      let touchStartTime = 0;
+      let touchStartX = 0;
+      let touchStartY = 0;
+
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          touchStartTime = Date.now();
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
+      };
+
+      const onTouchEnd = (e: TouchEvent) => {
+        if (e.changedTouches.length === 1 && Date.now() - touchStartTime < 700) {
+          const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+          const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+          if (dx < 24 && dy < 24 && mapInstanceRef.current && modeRef.current === 'pin') {
+            const rect = container?.getBoundingClientRect();
+            if (rect) {
+              const x = e.changedTouches[0].clientX - rect.left;
+              const y = e.changedTouches[0].clientY - rect.top;
+              const latlng = mapInstanceRef.current.containerPointToLatLng([x, y]);
+              if (latlng) {
+                applyCoordsRef.current(latlng.lat, latlng.lng);
+              }
+            }
+          }
+        }
+      };
+
+      container?.addEventListener('touchstart', onTouchStart, { passive: true });
+      container?.addEventListener('touchend', onTouchEnd, { passive: true });
 
       // Invalidate size on load to guarantee pixel-accurate clicks
       const initTimer = setTimeout(() => {
@@ -232,6 +275,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       return () => {
         clearTimeout(initTimer);
+        container?.removeEventListener('touchstart', onTouchStart);
+        container?.removeEventListener('touchend', onTouchEnd);
         if (mapInstanceRef.current) {
           try {
             mapInstanceRef.current.remove();
@@ -242,17 +287,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         }
       };
     }
-
-    return () => {
-      if (mapInstanceRef.current) {
-        try {
-          mapInstanceRef.current.remove();
-        } catch {
-          // Safe teardown
-        }
-        mapInstanceRef.current = null;
-      }
-    };
   }, []);
 
   // Invalidate size on fullscreen toggle or window resize
@@ -419,13 +453,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   // Get current device GPS location
   const handleUseCurrentLocation = () => {
     if (!('geolocation' in navigator)) {
-      alert('เบราว์เซอร์ไม่รองรับ GPS');
+      setGpsNotice('เบราว์เซอร์ไม่รองรับ GPS แนะนำแตะบนแผนที่ หรือเลือกหมู่บ้านด้านล่างเพื่อปักหมุด');
+      setTimeout(() => setGpsNotice(null), 6000);
       return;
     }
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGpsLoading(false);
+        setGpsNotice(null);
         const lat = parseFloat(pos.coords.latitude.toFixed(6));
         const lng = parseFloat(pos.coords.longitude.toFixed(6));
         applyCoordinates(lat, lng, `พิกัด GPS จริง (${lat}, ${lng}) ต.อ่างแก้ว`);
@@ -441,7 +477,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       (err) => {
         setGpsLoading(false);
         console.warn('Geolocation error:', err);
-        alert('ไม่สามารถดึงพิกัดจาก GPS ได้ กรุณาแตะบนแผนที่เพื่อปักหมุดด้วยตนเอง');
+        setGpsNotice('ไม่สามารถดึงพิกัดจาก GPS ได้ (ปิดการระบุตำแหน่ง หรืออยู่ในแอป Messenger) กรุณาแตะบนแผนที่ หรือเลื่อนแล้วกดปุ่ม "ปักหมุดตรงนี้"');
+        setTimeout(() => setGpsNotice(null), 8000);
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
@@ -478,7 +515,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                 type="button"
                 disabled={gpsLoading}
                 onClick={handleUseCurrentLocation}
-                className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
+                className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
                 title="ดึงพิกัด GPS อัตโนมัติจากอุปกรณ์ของคุณ"
               >
                 <Navigation className={`w-3 h-3 ${gpsLoading ? 'animate-spin' : ''}`} />
@@ -488,7 +525,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
               <button
                 type="button"
                 onClick={handlePinAtCenter}
-                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
+                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-lg transition shadow-xs cursor-pointer text-[11px]"
                 title="ปักหมุดตรงจุดกึ่งกลางของแผนที่ที่กำลังมองอยู่"
               >
                 <Crosshair className="w-3 h-3" />
@@ -518,6 +555,23 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         </div>
       </div>
 
+      {/* Non-blocking GPS Warning / Helper Banner */}
+      {gpsNotice && (
+        <div className="bg-amber-500 text-slate-950 px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 z-20 border-b border-amber-600 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-slate-950" />
+            <span>{gpsNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGpsNotice(null)}
+            className="px-2 py-0.5 bg-slate-950/20 hover:bg-slate-950/30 rounded text-[10px] font-bold shrink-0"
+          >
+            ปิด
+          </button>
+        </div>
+      )}
+
       {/* Floating Success Notification Toast */}
       {pinSuccessNotice && (
         <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
@@ -527,20 +581,36 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       )}
 
       {/* Real Leaflet OpenStreetMap Container */}
-      <div
-        ref={mapContainerRef}
-        style={{ height: isFullscreen ? 'calc(100vh - 120px)' : height }}
-        className="w-full z-0 relative focus:outline-none cursor-crosshair"
-      />
+      <div className="relative w-full z-0">
+        <div
+          ref={mapContainerRef}
+          style={{ height: isFullscreen ? 'calc(100vh - 120px)' : height }}
+          className="w-full focus:outline-none cursor-crosshair touch-manipulation"
+        />
 
-      {/* Floating Center Reticle Crosshair (Helper for Pinning on Mobile) */}
-      {mode === 'pin' && (
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
-          <div className="w-8 h-8 rounded-full border-2 border-dashed border-blue-600/60 flex items-center justify-center opacity-70">
-            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
-          </div>
-        </div>
-      )}
+        {/* Floating Center Reticle Crosshair (Helper for Pinning on Mobile) */}
+        {mode === 'pin' && (
+          <>
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
+              <div className="w-10 h-10 rounded-full border-2 border-dashed border-blue-600 flex items-center justify-center opacity-85 bg-blue-500/10 shadow-xs">
+                <div className="w-2.5 h-2.5 bg-blue-600 rounded-full" />
+              </div>
+            </div>
+
+            {/* Floating Mobile Center Pin Button directly over bottom of map */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+              <button
+                type="button"
+                onClick={handlePinAtCenter}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-full shadow-xl border-2 border-white transition cursor-pointer text-xs"
+              >
+                <Crosshair className="w-4 h-4" />
+                <span>📍 ปักหมุดตรงจุดกึ่งกลางนี้</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Floating Map Controls (Zoom In/Out) */}
       <div className="absolute right-3 top-14 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200">

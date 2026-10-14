@@ -780,6 +780,16 @@ export function saveMaterial(item: MaterialItem): void {
   setStoredItem(STORAGE_KEYS.MATERIALS, materials);
 }
 
+export function deleteMaterial(materialId: string): void {
+  const materials = getMaterials().filter((m) => m.id !== materialId);
+  setStoredItem(STORAGE_KEYS.MATERIALS, materials);
+}
+
+export function deleteMaterialCategory(categoryId: string): void {
+  const cats = getMaterialCategories().filter((c) => c.id !== categoryId);
+  setStoredItem(STORAGE_KEYS.MATERIAL_CATS, cats);
+}
+
 export function getMaterialTransactions(): MaterialTransaction[] {
   return getStoredItem<MaterialTransaction[]>(STORAGE_KEYS.MATERIAL_TXS, INITIAL_MATERIAL_TRANSACTIONS);
 }
@@ -922,18 +932,61 @@ export function approveRequisitionByDirector(
   const idx = reqs.findIndex((r) => r.id === reqId);
   if (idx === -1) return;
 
+  const req = reqs[idx];
+  if (req.status === 'completed') return;
+
   const thaiTime = new Intl.DateTimeFormat('th-TH', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date());
 
+  // เมื่อมีคำขอ ส่งให้ ผอ.อนุมัติ แล้วระบบทำการตัดยอดทันที
+  const materials = getMaterials();
+  const txs = getMaterialTransactions();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  req.items.forEach((item) => {
+    const matIdx = materials.findIndex((m) => m.id === item.materialId);
+    let newBal = 0;
+    if (matIdx >= 0) {
+      newBal = Math.max(0, materials[matIdx].currentStock - item.quantity);
+      materials[matIdx].currentStock = newBal;
+    }
+
+    // บันทึกรายการตัดยอดจ่ายออกลงสมุดบัญชีพัสดุ พ.ด.๔
+    const newTx: MaterialTransaction = {
+      id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      docNo: req.reqNo,
+      materialId: item.materialId,
+      materialName: item.materialName,
+      divisionId: req.divisionId,
+      transactionType: 'out',
+      partyName: `${req.requesterName} (${req.requesterPosition})`,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      balanceQuantity: newBal,
+      transactionDate: todayStr,
+      fiscalYear: req.fiscalYear,
+      approvedBy: `${approverName} (ผอ.กอง)`,
+      status: 'approved',
+      note: req.purpose,
+    };
+    txs.push(newTx);
+  });
+
+  setStoredItem(STORAGE_KEYS.MATERIALS, materials);
+  setStoredItem(STORAGE_KEYS.MATERIAL_TXS, txs);
+
   reqs[idx] = {
-    ...reqs[idx],
-    status: 'pending_dispense',
+    ...req,
+    status: 'completed',
     approverId,
     approverName,
     approvedAt: thaiTime,
-    approverComment: comment || 'อนุมัติคำขอเบิก ส่งต่อเจ้าหน้าที่คลังพัสดุเพื่อจ่ายของ',
+    approverComment: comment || 'ผู้อำนวยการกองอนุมัติการเบิก และระบบทำการตัดยอดสต็อกพัสดุเรียบร้อยแล้ว',
+    dispenserName: 'ระบบตัดยอดสต็อกอัตโนมัติ (ผอ.อนุมัติ)',
+    dispensedAt: thaiTime,
     updatedAt: new Date().toISOString(),
   };
   setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
@@ -1027,6 +1080,67 @@ export function rejectRequisition(
     rejectedBy,
     rejectedAt: thaiTime,
     rejectReason: reason || 'ไม่อนุมัติ',
+    updatedAt: new Date().toISOString(),
+  };
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
+export function updateMaterialRequisition(
+  reqId: string,
+  updates: Partial<MaterialRequisition>
+): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === reqId);
+  if (idx === -1) return;
+
+  reqs[idx] = {
+    ...reqs[idx],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);
+}
+
+export function cancelOrRevertMaterialRequisition(
+  reqId: string,
+  cancelledBy: string,
+  reason: string
+): void {
+  const reqs = getMaterialRequisitions();
+  const idx = reqs.findIndex((r) => r.id === reqId);
+  if (idx === -1) return;
+
+  const req = reqs[idx];
+  const thaiTime = new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  // หากคำขอนี้เคยได้รับการอนุมัติและตัดสต็อกไปแล้ว (completed) -> คืนยอดสต็อกกลับเข้าคลัง และปรับสมุดบัญชี พ.ด.๔
+  if (req.status === 'completed') {
+    const materials = getMaterials();
+    const txs = getMaterialTransactions();
+
+    req.items.forEach((item) => {
+      const matIdx = materials.findIndex((m) => m.id === item.materialId);
+      if (matIdx >= 0) {
+        materials[matIdx].currentStock += item.quantity;
+      }
+    });
+
+    // ลบรายการจ่ายออกที่ผูกกับเลขที่ใบเบิกนี้ออกจากบัญชีธุรกรรม
+    const remainingTxs = txs.filter((t) => t.docNo !== req.reqNo);
+
+    setStoredItem(STORAGE_KEYS.MATERIALS, materials);
+    setStoredItem(STORAGE_KEYS.MATERIAL_TXS, remainingTxs);
+  }
+
+  reqs[idx] = {
+    ...req,
+    status: 'cancelled',
+    cancelledBy,
+    cancelledAt: thaiTime,
+    cancelReason: reason || 'ยกเลิกเนื่องจากเบิกผิดพลาด',
     updatedAt: new Date().toISOString(),
   };
   setStoredItem(STORAGE_KEYS.REQUISITIONS, reqs);

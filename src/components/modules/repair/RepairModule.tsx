@@ -19,6 +19,7 @@ import {
   Check,
   Phone,
   Building,
+  Download,
 } from 'lucide-react';
 import { RepairItem, RepairStatus, RepairCategory, RepairUrgency, Village } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
@@ -27,6 +28,7 @@ import {
   logPdpaAction,
   getVillages,
 } from '../../../db/storage';
+import { exportRepairsToExcel } from '../../../utils/exportUtils';
 import { InteractiveMap } from '../../common/InteractiveMap';
 
 interface RepairModuleProps {
@@ -167,13 +169,23 @@ export const RepairModule: React.FC<RepairModuleProps> = ({ repairs }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => exportRepairsToExcel(repairs)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+              title="ส่งออกรายงานสรุปงานแจ้งซ่อมบำรุงเป็นไฟล์ Excel"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Excel</span>
+            </button>
+
             <div className="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold">
               <button
                 onClick={() => setActiveTab('list')}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   activeTab === 'list'
-                    ? 'bg-white text-slate-900 shadow-xs'
+                    ? 'bg-white text-slate-900 shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -181,7 +193,7 @@ export const RepairModule: React.FC<RepairModuleProps> = ({ repairs }) => {
               </button>
               <button
                 onClick={() => setActiveTab('stats_kpi')}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 ${
+                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                   activeTab === 'stats_kpi'
                     ? 'bg-amber-500 text-slate-950 shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'

@@ -20,6 +20,7 @@ import {
   ChevronRight,
   ExternalLink,
 } from 'lucide-react';
+import { PWAInstallButton } from '../../common/PWAInstallButton';
 import {
   RepairItem,
   RepairCategory,
@@ -296,6 +297,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {/* ================= TAB: LANDING ================= */}
         {activeTab === 'landing' && (
           <div className="space-y-8">
+            {/* PWA Mobile Add to Home Screen Banner */}
+            <PWAInstallButton variant="banner" />
+
             {/* 3 Main Portals */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Card 1: Repair */}
@@ -718,15 +722,15 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 {/* Location coordinates notice pill */}
-                <div className="mb-2.5 p-2 rounded-xl bg-blue-50 border border-blue-200 flex flex-wrap items-center justify-between text-xs text-blue-900 gap-1.5">
+                <div className="mb-2.5 p-2.5 rounded-xl bg-blue-50 border border-blue-200 flex flex-wrap items-center justify-between text-xs text-blue-900 gap-2">
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
                     <span className="font-medium">
-                      พิกัดที่ปักหมุด: <strong className="font-mono text-blue-700">{repairCoords.lat.toFixed(5)}, {repairCoords.lng.toFixed(5)}</strong>
+                      พิกัดที่ปักหมุด: <strong className="font-mono text-blue-700">{repairCoords.lat.toFixed(6)}, {repairCoords.lng.toFixed(6)}</strong>
                     </span>
                   </div>
                   <span className="text-[11px] text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-200">
-                    แตะที่แผนที่ด้านล่าง เพื่อปักหมุดตรงจุดที่ต้องการได้ทันที
+                    แตะที่แผนที่ หรือเลื่อนแล้วกดปุ่ม &ldquo;📍 ปักหมุดตรงจุดกึ่งกลางนี้&rdquo;
                   </span>
                 </div>
 
